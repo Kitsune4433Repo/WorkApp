@@ -4,6 +4,7 @@ import { pool } from '../config/database';
 import { requireAuth, requireRole } from '../middleware/auth';
 import { asyncHandler, ApiError } from '../middleware/errorHandler';
 import { sendPushToUsers } from '../services/pushNotificationService';
+import { polygonToWkt } from '../services/geofenceService';
 
 export const jobsRouter = Router();
 jobsRouter.use(requireAuth);
@@ -25,11 +26,6 @@ const createJobSchema = z.object({
   crewId: z.string().uuid().optional(),
   assigneeUserIds: z.array(z.string().uuid()).default([]),
 });
-
-function polygonToWkt(points: { lat: number; lng: number }[]): string {
-  const ring = [...points, points[0]].map((p) => `${p.lng} ${p.lat}`).join(', ');
-  return `SRID=4326;POLYGON((${ring}))`;
-}
 
 jobsRouter.get(
   '/',

@@ -53,3 +53,11 @@ cd web && npm install && npm run dev
 The Android app is a standard Gradle project — open `android/` in Android Studio. It needs
 `android/app/google-services.json` replaced with a real Firebase config before push notifications
 will work; the committed one is a placeholder that lets the project build.
+
+## Tests
+
+```bash
+cd backend && npm test              # vitest — geofence math, tamper detection, JWT issuance,
+                                     # additive-conflict resolution
+cd android && ./gradlew testDebugUnitTest   # JVM unit tests — on-device geofence evaluator
+```

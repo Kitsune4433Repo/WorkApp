@@ -2,7 +2,9 @@ package com.workapp.crew.data.repository
 
 import com.workapp.crew.data.local.dao.InventoryDao
 import com.workapp.crew.data.local.entities.InventoryPendingDeltaEntity
+import com.workapp.crew.data.local.entities.TruckInventoryEntity
 import com.workapp.crew.data.remote.ApiService
+import com.workapp.crew.data.remote.QrTransferClaimResponse
 import com.workapp.crew.data.remote.QrTransferCreateRequest
 import com.workapp.crew.sync.SyncWorker
 import kotlinx.coroutines.flow.Flow
@@ -45,8 +47,21 @@ class InventoryRepository @Inject constructor(
         return response.qrToken
     }
 
-    suspend fun claimQrTransfer(token: String) {
-        api.claimQrTransfer(token)
+    /** Feature 12, receiving side: claims a scanned transfer token and reflects the credited
+     * quantity in the local ledger immediately. Only visible in the UI if [materialId] is already
+     * cached locally from a previous catalog sync — see the pull-sync note in docs/ARCHITECTURE.md. */
+    suspend fun claimQrTransfer(token: String): QrTransferClaimResponse {
+        val response = api.claimQrTransfer(token)
+        val currentBalance = dao.getQuantityHave(response.materialId) ?: 0.0
+        dao.upsertBalance(
+            TruckInventoryEntity(
+                materialId = response.materialId,
+                quantityHave = currentBalance + response.quantity,
+                version = 0,
+                updatedAt = System.currentTimeMillis(),
+            ),
+        )
         SyncWorker.triggerImmediateSync(context)
+        return response
     }
 }

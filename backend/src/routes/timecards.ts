@@ -4,23 +4,12 @@ import { pool } from '../config/database';
 import { requireAuth } from '../middleware/auth';
 import { asyncHandler, ApiError } from '../middleware/errorHandler';
 import { isPointInJobGeofence, toGeographyPoint, recordLocationPing } from '../services/geofenceService';
+import { detectTamper } from '../services/tamperDetectionService';
 
 export const timecardsRouter = Router();
 timecardsRouter.use(requireAuth);
 
 const pointSchema = z.object({ lat: z.number(), lng: z.number() });
-
-// Tamper checks: device clock must be within 2 minutes of server time, and consecutive
-// events for the same device must be monotonically increasing.
-const TAMPER_CLOCK_SKEW_MS = 2 * 60 * 1000;
-
-function detectTamper(deviceTime: Date): { flagged: boolean; reason?: string } {
-  const skew = Math.abs(Date.now() - deviceTime.getTime());
-  if (skew > TAMPER_CLOCK_SKEW_MS) {
-    return { flagged: true, reason: `device_clock_skew_${Math.round(skew / 1000)}s` };
-  }
-  return { flagged: false };
-}
 
 const clockInSchema = z.object({
   jobId: z.string().uuid().optional(),

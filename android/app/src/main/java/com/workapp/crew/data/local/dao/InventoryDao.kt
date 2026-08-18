@@ -27,6 +27,9 @@ interface InventoryDao {
     @Upsert
     suspend fun upsertBalance(balance: TruckInventoryEntity)
 
+    @Query("SELECT quantityHave FROM truck_inventory WHERE materialId = :materialId")
+    suspend fun getQuantityHave(materialId: String): Double?
+
     @Insert
     suspend fun insertPendingDelta(delta: InventoryPendingDeltaEntity)
 

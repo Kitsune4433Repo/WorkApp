@@ -83,6 +83,7 @@ dependencies {
 
     // Image compression (feature 13) & QR (feature 12)
     implementation("id.zelory:compressor:3.0.1")
+    implementation("io.coil-kt:coil-compose:2.6.0")
     implementation("com.google.zxing:core:3.5.3")
     implementation("com.journeyapps:zxing-android-embedded:4.3.0")
 

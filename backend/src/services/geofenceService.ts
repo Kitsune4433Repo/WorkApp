@@ -9,6 +9,14 @@ export function toGeographyPoint(p: LatLng): string {
   return `SRID=4326;POINT(${p.lng} ${p.lat})`;
 }
 
+/** Closes the ring (first point repeated last) and formats as WKT for ST_GeogFromText. Throws on
+ * fewer than 3 points — a polygon geofence can't be drawn with less. */
+export function polygonToWkt(points: LatLng[]): string {
+  if (points.length < 3) throw new Error('polygon_requires_at_least_3_points');
+  const ring = [...points, points[0]].map((p) => `${p.lng} ${p.lat}`).join(', ');
+  return `SRID=4326;POLYGON((${ring}))`;
+}
+
 /**
  * Returns true/false if the job has a geofence configured, or null if no
  * geofence exists (caller decides whether to allow, warn, or block).

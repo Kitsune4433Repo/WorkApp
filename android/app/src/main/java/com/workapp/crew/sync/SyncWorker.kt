@@ -10,6 +10,11 @@ import com.workapp.crew.data.local.dao.TimecardDao
 import com.workapp.crew.data.remote.*
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.MultipartBody
+import okhttp3.RequestBody.Companion.asRequestBody
+import okhttp3.RequestBody.Companion.toRequestBody
+import java.io.File
 import java.util.concurrent.TimeUnit
 
 /**
@@ -39,6 +44,7 @@ class SyncWorker @AssistedInject constructor(
             pushLocationPings()
             pushChatMessages()
             pushMapAnnotations()
+            pushPhotoProofs()
             Result.success()
         } catch (e: Exception) {
             // Network/5xx failures retry with WorkManager's backoff; validation errors (4xx) would
@@ -139,6 +145,30 @@ class SyncWorker @AssistedInject constructor(
                     // it unsynced so the technician sees "pending review" instead of losing edits.
                 } else throw e
             }
+        }
+    }
+
+    private suspend fun pushPhotoProofs() {
+        for (photo in documentDao.getUnsyncedPhotos()) {
+            val file = File(photo.localFilePath)
+            if (!file.exists()) {
+                // Compression or the app process died mid-write; nothing left to upload for this
+                // record, so drop it rather than retrying forever.
+                documentDao.markPhotoSynced(photo.clientPhotoId)
+                continue
+            }
+            val photoPart = MultipartBody.Part.createFormData(
+                "photo",
+                file.name,
+                file.asRequestBody("image/jpeg".toMediaType()),
+            )
+            api.uploadPhotoProof(
+                photo = photoPart,
+                jobId = photo.jobId.toRequestBody("text/plain".toMediaType()),
+                takenAt = isoTimestamp(photo.takenAt).toRequestBody("text/plain".toMediaType()),
+                clientPhotoId = photo.clientPhotoId.toRequestBody("text/plain".toMediaType()),
+            )
+            documentDao.markPhotoSynced(photo.clientPhotoId)
         }
     }
 
