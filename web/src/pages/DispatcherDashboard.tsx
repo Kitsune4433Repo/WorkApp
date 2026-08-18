@@ -112,7 +112,7 @@ export function DispatcherDashboard() {
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-2xl font-bold text-slate-900">Dispatch Board</h1>
+        <h1 className="text-2xl font-bold text-slate-900">Job Board</h1>
         <p className="text-sm text-slate-500">Schedule, modify, and push work orders to field devices.</p>
       </div>
 

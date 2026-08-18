@@ -49,45 +49,89 @@ export function InventoryLedger() {
     <div className="space-y-8">
       <div>
         <h1 className="text-2xl font-bold text-slate-900">Material Ledger</h1>
-        <p className="text-sm text-slate-500">What you have on hand. Use +/- to adjust as material is used or restocked.</p>
+        <p className="text-sm text-slate-500">What you have on hand. Use +/- to adjust by one, or click the number to type an exact amount.</p>
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {have?.map((row) => (
-          <div key={row.material_id} className="flex items-center justify-between rounded-lg border border-slate-200 bg-white p-4">
-            <div className="font-medium text-slate-900">{row.name}</div>
-            <div className="flex items-center gap-3">
-              <button
-                onClick={() => adjustMutation.mutate({ materialId: row.material_id, delta: -1 })}
-                className="h-8 w-8 rounded-full border border-slate-300 text-lg font-bold text-slate-600 hover:bg-slate-100"
-              >
-                −
-              </button>
-              <span className="w-14 text-center font-semibold">
-                {row.quantity_have} {row.unit}
-              </span>
-              <button
-                onClick={() => adjustMutation.mutate({ materialId: row.material_id, delta: 1 })}
-                className="h-8 w-8 rounded-full border border-slate-300 text-lg font-bold text-slate-600 hover:bg-slate-100"
-              >
-                +
-              </button>
-              {canManageCatalog && (
-                <button
-                  onClick={() => onRemove(row)}
-                  disabled={removeMutation.isPending}
-                  className="ml-1 rounded-md border border-red-300 px-2 py-1 text-xs font-medium text-red-600 hover:bg-red-50"
-                >
-                  Remove
-                </button>
-              )}
-            </div>
-          </div>
+          <MaterialRow
+            key={row.material_id}
+            row={row}
+            onAdjust={(delta) => adjustMutation.mutate({ materialId: row.material_id, delta })}
+            onRemove={canManageCatalog ? () => onRemove(row) : undefined}
+            removing={removeMutation.isPending}
+          />
         ))}
         {!have?.length && <p className="text-slate-400">No materials tracked yet.</p>}
       </div>
 
       <AddMaterialForm />
+    </div>
+  );
+}
+
+function MaterialRow({
+  row,
+  onAdjust,
+  onRemove,
+  removing,
+}: {
+  row: HaveRow;
+  onAdjust: (delta: number) => void;
+  onRemove?: () => void;
+  removing: boolean;
+}) {
+  const [editValue, setEditValue] = useState<string | null>(null);
+
+  function commitEdit() {
+    if (editValue === null) return;
+    const next = Number(editValue);
+    setEditValue(null);
+    if (!Number.isFinite(next) || next < 0) return;
+    const delta = next - row.quantity_have;
+    if (delta !== 0) onAdjust(delta);
+  }
+
+  return (
+    <div className="flex items-center justify-between rounded-lg border border-slate-200 bg-white p-4">
+      <div className="font-medium text-slate-900">{row.name}</div>
+      <div className="flex items-center gap-3">
+        <button
+          onClick={() => onAdjust(-1)}
+          className="h-8 w-8 rounded-full border border-slate-300 text-lg font-bold text-slate-600 hover:bg-slate-100"
+        >
+          −
+        </button>
+        <div className="flex items-center gap-1">
+          <input
+            type="number"
+            min={0}
+            value={editValue ?? Number(row.quantity_have)}
+            onChange={(e) => setEditValue(e.target.value)}
+            onBlur={commitEdit}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+            }}
+            className="w-20 rounded-md border border-slate-300 px-2 py-1 text-center font-semibold"
+          />
+          <span className="text-sm text-slate-500">{row.unit}</span>
+        </div>
+        <button
+          onClick={() => onAdjust(1)}
+          className="h-8 w-8 rounded-full border border-slate-300 text-lg font-bold text-slate-600 hover:bg-slate-100"
+        >
+          +
+        </button>
+        {onRemove && (
+          <button
+            onClick={onRemove}
+            disabled={removing}
+            className="ml-1 rounded-md border border-red-300 px-2 py-1 text-xs font-medium text-red-600 hover:bg-red-50"
+          >
+            Remove
+          </button>
+        )}
+      </div>
     </div>
   );
 }

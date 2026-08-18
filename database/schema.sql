@@ -168,6 +168,21 @@ CREATE TABLE job_required_materials (
     UNIQUE (job_id, material_id)
 );
 
+-- "Out of Inventory" list: materials to buy or replace — not tied to a job (unlike
+-- job_required_materials above) and not per-technician (unlike truck_inventory) — just a shared
+-- running list anyone can add to, adjust, or clear once restocked.
+CREATE TABLE restock_requests (
+    id                 UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    material_id        UUID REFERENCES material_catalog(id) ON DELETE SET NULL,
+    item_name          TEXT NOT NULL, -- snapshot so the row still reads fine if the catalog link is cleared
+    unit               TEXT NOT NULL DEFAULT 'unit',
+    quantity_needed    NUMERIC(12,2) NOT NULL DEFAULT 0 CHECK (quantity_needed >= 0),
+    note               TEXT,
+    requested_by       UUID REFERENCES users(id) ON DELETE SET NULL,
+    created_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at         TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 -- Append-only ledger of every +/- and transfer; truck_inventory is a materialized aggregate of this.
 CREATE TABLE inventory_transactions (
     id                 UUID PRIMARY KEY DEFAULT uuid_generate_v4(),

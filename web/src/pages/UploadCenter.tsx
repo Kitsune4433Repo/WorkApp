@@ -1,6 +1,8 @@
 import { FormEvent, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api/client';
+import { useAuth } from '../context/AuthContext';
+import { ImageAnnotationViewer } from '../components/ImageAnnotationViewer';
 
 interface Document {
   id: string;
@@ -13,6 +15,7 @@ interface Document {
 }
 
 const CATEGORIES = ['Production', 'Property Map'] as const;
+const IMAGE_EXTENSIONS = new Set(['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg']);
 
 // Any file type is allowed — this just labels what was uploaded, derived from the file itself
 // rather than asked of the user.
@@ -24,10 +27,12 @@ function deriveDocType(file: File): string {
 }
 
 export function UploadCenter() {
+  const { user } = useAuth();
   const queryClient = useQueryClient();
   const [title, setTitle] = useState('');
   const [category, setCategory] = useState<(typeof CATEGORIES)[number]>('Production');
   const [file, setFile] = useState<File | null>(null);
+  const [viewingImage, setViewingImage] = useState<{ doc: Document; url: string } | null>(null);
 
   const { data: documents } = useQuery<Document[]>({
     queryKey: ['documents'],
@@ -43,7 +48,9 @@ export function UploadCenter() {
       form.append('docType', deriveDocType(file));
       form.append('category', category);
       form.append('isMap', String(category === 'Property Map'));
-      await api.post('/documents', form, { headers: { 'Content-Type': 'multipart/form-data' } });
+      // Bounded so a broken object-store connection fails with a visible error instead of the
+      // button being stuck on "Uploading…" forever with nothing to tell the user what's wrong.
+      await api.post('/documents', form, { headers: { 'Content-Type': 'multipart/form-data' }, timeout: 45_000 });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['documents'] });
@@ -53,8 +60,11 @@ export function UploadCenter() {
   });
 
   const openMutation = useMutation({
-    mutationFn: async (documentId: string) => (await api.get(`/documents/${documentId}/download`)).data as { url: string },
-    onSuccess: (data) => window.open(data.url, '_blank', 'noopener,noreferrer'),
+    mutationFn: async (doc: Document) => ({ doc, url: (await api.get(`/documents/${doc.id}/download`)).data.url as string }),
+    onSuccess: ({ doc, url }) => {
+      if (IMAGE_EXTENSIONS.has(doc.doc_type.toLowerCase())) setViewingImage({ doc, url });
+      else window.open(url, '_blank', 'noopener,noreferrer');
+    },
   });
 
   function onSubmit(e: FormEvent) {
@@ -89,7 +99,7 @@ export function UploadCenter() {
         {documents?.map((doc) => (
           <button
             key={doc.id}
-            onClick={() => openMutation.mutate(doc.id)}
+            onClick={() => openMutation.mutate(doc)}
             className="rounded-lg border border-slate-200 bg-white p-4 text-left hover:border-brand-300 hover:shadow-sm"
           >
             <div className="font-medium text-slate-900">{doc.title}</div>
@@ -97,11 +107,23 @@ export function UploadCenter() {
               <span className="rounded-full bg-slate-100 px-2 py-0.5 uppercase">{doc.doc_type}</span>
               {doc.category && <span className="rounded-full bg-brand-50 px-2 py-0.5 text-brand-700">{doc.category}</span>}
               <span>v{doc.current_version}</span>
+              {IMAGE_EXTENSIONS.has(doc.doc_type.toLowerCase()) && <span className="text-brand-600">draw/highlight</span>}
             </div>
           </button>
         ))}
         {!documents?.length && <p className="text-slate-400">Nothing uploaded yet.</p>}
       </div>
+
+      {viewingImage && user && (
+        <ImageAnnotationViewer
+          documentId={viewingImage.doc.id}
+          documentVersion={viewingImage.doc.current_version}
+          title={viewingImage.doc.title}
+          imageUrl={viewingImage.url}
+          currentUserId={user.id}
+          onClose={() => setViewingImage(null)}
+        />
+      )}
     </div>
   );
 }

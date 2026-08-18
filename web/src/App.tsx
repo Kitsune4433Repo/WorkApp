@@ -4,6 +4,7 @@ import { AppShell } from './components/AppShell';
 import { LoginPage } from './pages/LoginPage';
 import { DispatcherDashboard } from './pages/DispatcherDashboard';
 import { InventoryLedger } from './pages/InventoryLedger';
+import { OutOfInventoryPage } from './pages/OutOfInventoryPage';
 import { TimecardsPage } from './pages/TimecardsPage';
 import { ChatPage } from './pages/ChatPage';
 import { UploadCenter } from './pages/UploadCenter';
@@ -33,6 +34,7 @@ export default function App() {
               <Routes>
                 <Route path="/" element={<DispatcherDashboard />} />
                 <Route path="/inventory" element={<InventoryLedger />} />
+                <Route path="/out-of-inventory" element={<OutOfInventoryPage />} />
                 <Route path="/timecards" element={<TimecardsPage />} />
                 <Route path="/chat" element={<ChatPage />} />
                 <Route path="/uploads" element={<UploadCenter />} />

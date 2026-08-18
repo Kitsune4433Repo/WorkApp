@@ -5,8 +5,9 @@ import { useAuth } from '../context/AuthContext';
 import { api } from '../api/client';
 
 const NAV = [
-  { to: '/', label: 'Dispatch' },
+  { to: '/', label: 'Job Board' },
   { to: '/inventory', label: 'Inventory' },
+  { to: '/out-of-inventory', label: 'Out Of Inventory' },
   { to: '/timecards', label: 'Timecards' },
   { to: '/chat', label: 'Chat' },
   { to: '/uploads', label: 'Resources' },

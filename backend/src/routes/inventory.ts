@@ -249,3 +249,80 @@ inventoryRouter.post(
     }
   }),
 );
+
+// --- "Out of Inventory": materials to buy or replace (feature request, not job- or user-scoped) ---
+
+inventoryRouter.get(
+  '/restock',
+  asyncHandler(async (_req, res) => {
+    const { rows } = await pool.query(
+      `SELECT id, material_id, item_name, unit, quantity_needed, note, requested_by, created_at
+         FROM restock_requests ORDER BY created_at DESC`,
+    );
+    res.json(rows);
+  }),
+);
+
+const createRestockSchema = z.object({
+  itemName: z.string().min(1),
+  unit: z.string().min(1).default('unit'),
+  quantityNeeded: z.number().min(0).default(1),
+  note: z.string().optional(),
+  materialId: z.string().uuid().optional(),
+});
+
+inventoryRouter.post(
+  '/restock',
+  asyncHandler(async (req, res) => {
+    const body = createRestockSchema.parse(req.body);
+    const { rows } = await pool.query(
+      `INSERT INTO restock_requests (material_id, item_name, unit, quantity_needed, note, requested_by)
+       VALUES ($1,$2,$3,$4,$5,$6) RETURNING id`,
+      [body.materialId ?? null, body.itemName, body.unit, body.quantityNeeded, body.note ?? null, req.user!.id],
+    );
+    res.status(201).json({ id: rows[0].id });
+  }),
+);
+
+const updateRestockSchema = z.object({
+  quantityNeeded: z.number().min(0).optional(),
+  note: z.string().optional(),
+});
+
+inventoryRouter.patch(
+  '/restock/:id',
+  asyncHandler(async (req, res) => {
+    const body = updateRestockSchema.parse(req.body);
+    const sets: string[] = [];
+    const params: unknown[] = [];
+    for (const [key, col] of [
+      ['quantityNeeded', 'quantity_needed'],
+      ['note', 'note'],
+    ] as const) {
+      const value = (body as Record<string, unknown>)[key];
+      if (value !== undefined) {
+        params.push(value);
+        sets.push(`${col} = $${params.length}`);
+      }
+    }
+    if (!sets.length) throw new ApiError(400, 'no_fields_to_update');
+    params.push(req.params.id);
+    const { rows } = await pool.query(
+      `UPDATE restock_requests SET ${sets.join(', ')}, updated_at = now() WHERE id = $${params.length} RETURNING id`,
+      params,
+    );
+    if (!rows.length) throw new ApiError(404, 'restock_request_not_found');
+    res.status(204).end();
+  }),
+);
+
+// Removing a request means it's been bought/resolved — no soft-delete needed, this list is a
+// working queue, not a historical ledger.
+inventoryRouter.delete(
+  '/restock/:id',
+  asyncHandler(async (req, res) => {
+    const { rows } = await pool.query(`DELETE FROM restock_requests WHERE id = $1 RETURNING id`, [req.params.id]);
+    if (!rows.length) throw new ApiError(404, 'restock_request_not_found');
+    res.status(204).end();
+  }),
+);
