@@ -7,7 +7,6 @@ import { InventoryLedger } from './pages/InventoryLedger';
 import { TimecardsPage } from './pages/TimecardsPage';
 import { ChatPage } from './pages/ChatPage';
 import { UploadCenter } from './pages/UploadCenter';
-import { KnowledgeBasePage } from './pages/KnowledgeBasePage';
 import { ConflictReviewPage } from './pages/ConflictReviewPage';
 import { UserManagementPage } from './pages/UserManagementPage';
 
@@ -36,7 +35,6 @@ export default function App() {
                 <Route path="/timecards" element={<TimecardsPage />} />
                 <Route path="/chat" element={<ChatPage />} />
                 <Route path="/uploads" element={<UploadCenter />} />
-                <Route path="/knowledge-base" element={<KnowledgeBasePage />} />
                 <Route
                   path="/conflicts"
                   element={

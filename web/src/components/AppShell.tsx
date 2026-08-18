@@ -10,7 +10,6 @@ const NAV = [
   { to: '/timecards', label: 'Timecards' },
   { to: '/chat', label: 'Chat' },
   { to: '/uploads', label: 'Uploads' },
-  { to: '/knowledge-base', label: 'Knowledge Base' },
 ];
 
 const CONFLICT_REVIEW_ROLES = ['admin', 'dispatcher'];
