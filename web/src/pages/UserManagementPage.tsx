@@ -37,6 +37,21 @@ export function UserManagementPage() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['users'] }),
   });
 
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => api.delete(`/users/${id}`),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['users'] }),
+  });
+
+  function onDelete(u: User) {
+    if (
+      window.confirm(
+        `Permanently delete ${u.full_name}'s account and login? This cannot be undone. (Jobs, messages, and documents they created stay, but reactivating this person is only possible by creating a new account.)`,
+      )
+    ) {
+      deleteMutation.mutate(u.id);
+    }
+  }
+
   return (
     <div className="space-y-8">
       <div>
@@ -70,19 +85,28 @@ export function UserManagementPage() {
                     {u.is_active ? 'active' : 'inactive'}
                   </span>
                 </td>
-                <td className="px-4 py-3 text-right">
+                <td className="px-4 py-3 text-right space-x-2">
                   {u.id === currentUser?.id ? (
                     <span className="text-xs text-slate-300">that's you</span>
                   ) : (
-                    <button
-                      onClick={() => setActiveMutation.mutate({ id: u.id, isActive: !u.is_active })}
-                      disabled={setActiveMutation.isPending}
-                      className={`rounded-md px-3 py-1 text-xs font-medium ${
-                        u.is_active ? 'border border-red-300 text-red-600 hover:bg-red-50' : 'border border-green-300 text-green-700 hover:bg-green-50'
-                      }`}
-                    >
-                      {u.is_active ? 'Deactivate' : 'Reactivate'}
-                    </button>
+                    <>
+                      <button
+                        onClick={() => setActiveMutation.mutate({ id: u.id, isActive: !u.is_active })}
+                        disabled={setActiveMutation.isPending}
+                        className={`rounded-md px-3 py-1 text-xs font-medium ${
+                          u.is_active ? 'border border-red-300 text-red-600 hover:bg-red-50' : 'border border-green-300 text-green-700 hover:bg-green-50'
+                        }`}
+                      >
+                        {u.is_active ? 'Deactivate' : 'Reactivate'}
+                      </button>
+                      <button
+                        onClick={() => onDelete(u)}
+                        disabled={deleteMutation.isPending}
+                        className="rounded-md bg-red-600 px-3 py-1 text-xs font-medium text-white hover:bg-red-700"
+                      >
+                        Delete permanently
+                      </button>
+                    </>
                   )}
                 </td>
               </tr>

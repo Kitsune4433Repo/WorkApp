@@ -92,7 +92,7 @@ CREATE TABLE jobs (
     stopped_at         TIMESTAMPTZ,
     completed_at       TIMESTAMPTZ,
     closed_at          TIMESTAMPTZ,
-    created_by         UUID NOT NULL REFERENCES users(id),
+    created_by         UUID REFERENCES users(id) ON DELETE SET NULL,
     crew_id            UUID REFERENCES crews(id) ON DELETE SET NULL,
     created_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at         TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -107,7 +107,7 @@ CREATE TABLE job_assignments (
     id                 UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     job_id             UUID NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
     user_id            UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    assigned_by        UUID NOT NULL REFERENCES users(id),
+    assigned_by        UUID REFERENCES users(id) ON DELETE SET NULL,
     assigned_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
     acknowledged_at    TIMESTAMPTZ,
     UNIQUE (job_id, user_id)
@@ -141,7 +141,7 @@ CREATE TABLE material_catalog (
     unit               TEXT NOT NULL DEFAULT 'ea',
     description        TEXT,
     is_active          BOOLEAN NOT NULL DEFAULT TRUE,
-    created_by         UUID REFERENCES users(id),
+    created_by         UUID REFERENCES users(id) ON DELETE SET NULL,
     created_at         TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX idx_material_catalog_name_trgm ON material_catalog USING GIN (name gin_trgm_ops);
@@ -174,8 +174,8 @@ CREATE TABLE inventory_transactions (
     material_id        UUID NOT NULL REFERENCES material_catalog(id),
     type               inventory_txn_type NOT NULL,
     quantity            NUMERIC(12,2) NOT NULL,
-    from_user_id       UUID REFERENCES users(id),
-    to_user_id         UUID REFERENCES users(id),
+    from_user_id       UUID REFERENCES users(id) ON DELETE SET NULL,
+    to_user_id         UUID REFERENCES users(id) ON DELETE SET NULL,
     job_id             UUID REFERENCES jobs(id) ON DELETE SET NULL,
     client_txn_id      UUID NOT NULL, -- idempotency key generated on-device for offline dedup
     device_id          TEXT,
@@ -189,8 +189,8 @@ CREATE INDEX idx_inventory_txn_users    ON inventory_transactions (from_user_id,
 -- QR peer-to-peer transfer handshake records (feature 12).
 CREATE TABLE qr_transfers (
     id                 UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    from_user_id       UUID NOT NULL REFERENCES users(id),
-    to_user_id         UUID REFERENCES users(id),
+    from_user_id       UUID REFERENCES users(id) ON DELETE SET NULL,
+    to_user_id         UUID REFERENCES users(id) ON DELETE SET NULL,
     material_id        UUID NOT NULL REFERENCES material_catalog(id),
     quantity           NUMERIC(12,2) NOT NULL CHECK (quantity > 0),
     qr_payload_token   TEXT NOT NULL UNIQUE, -- signed short-lived token embedded in the QR code
@@ -266,7 +266,7 @@ CREATE TABLE chat_channels (
     type               channel_type NOT NULL,
     name               TEXT,
     job_id             UUID REFERENCES jobs(id) ON DELETE CASCADE,
-    created_by         UUID NOT NULL REFERENCES users(id),
+    created_by         UUID REFERENCES users(id) ON DELETE SET NULL,
     created_at         TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -280,7 +280,7 @@ CREATE TABLE chat_channel_members (
 CREATE TABLE chat_messages (
     id                 UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     channel_id         UUID NOT NULL REFERENCES chat_channels(id) ON DELETE CASCADE,
-    sender_id          UUID NOT NULL REFERENCES users(id),
+    sender_id          UUID REFERENCES users(id) ON DELETE SET NULL,
     body               TEXT,
     attachment_url     TEXT,
     client_msg_id      UUID NOT NULL, -- offline dedup key
@@ -302,7 +302,7 @@ CREATE TABLE documents (
     job_id             UUID REFERENCES jobs(id) ON DELETE SET NULL,
     current_version    INTEGER NOT NULL DEFAULT 1,
     is_map             BOOLEAN NOT NULL DEFAULT FALSE,
-    uploaded_by        UUID NOT NULL REFERENCES users(id),
+    uploaded_by        UUID REFERENCES users(id) ON DELETE SET NULL,
     created_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at         TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -315,7 +315,7 @@ CREATE TABLE document_versions (
     file_url           TEXT NOT NULL, -- object storage key (S3/GCS/MinIO)
     file_size_bytes    BIGINT,
     checksum_sha256    TEXT NOT NULL,
-    uploaded_by        UUID NOT NULL REFERENCES users(id),
+    uploaded_by        UUID REFERENCES users(id) ON DELETE SET NULL,
     change_note        TEXT,
     created_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
     UNIQUE (document_id, version_number)
@@ -326,7 +326,7 @@ CREATE TABLE map_annotations (
     id                 UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     document_id        UUID NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
     document_version   INTEGER NOT NULL,
-    created_by         UUID NOT NULL REFERENCES users(id),
+    created_by         UUID REFERENCES users(id) ON DELETE SET NULL,
     layer_data         JSONB NOT NULL, -- vector paths: [{type, points[], color, width, ts}]
     version            BIGINT NOT NULL DEFAULT 1, -- lamport/local version for conflict detection
     client_id          TEXT NOT NULL, -- originating device
@@ -351,7 +351,7 @@ CREATE TABLE knowledge_base_articles (
                            setweight(to_tsvector('english', coalesce(title, '')), 'A') ||
                            setweight(to_tsvector('english', coalesce(content, '')), 'B')
                        ) STORED,
-    created_by         UUID NOT NULL REFERENCES users(id),
+    created_by         UUID REFERENCES users(id) ON DELETE SET NULL,
     created_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at         TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -365,7 +365,7 @@ CREATE INDEX idx_kb_tags          ON knowledge_base_articles USING GIN (tags);
 CREATE TABLE photo_proofs (
     id                 UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     job_id             UUID NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
-    uploaded_by        UUID NOT NULL REFERENCES users(id),
+    uploaded_by        UUID REFERENCES users(id) ON DELETE SET NULL,
     file_url           TEXT NOT NULL,
     thumbnail_url      TEXT,
     original_size_bytes   BIGINT,
@@ -387,14 +387,14 @@ CREATE TABLE sync_conflicts (
     entity_type        TEXT NOT NULL, -- 'truck_inventory' | 'map_annotations' | 'job_required_materials' | ...
     entity_id          UUID NOT NULL,
     device_id          TEXT NOT NULL,
-    user_id            UUID REFERENCES users(id),
+    user_id            UUID REFERENCES users(id) ON DELETE SET NULL,
     client_payload     JSONB NOT NULL,
     server_payload     JSONB NOT NULL,
     client_version     BIGINT NOT NULL,
     server_version     BIGINT NOT NULL,
     resolution         sync_resolution NOT NULL DEFAULT 'pending',
     resolved_payload   JSONB,
-    resolved_by        UUID REFERENCES users(id),
+    resolved_by        UUID REFERENCES users(id) ON DELETE SET NULL,
     created_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
     resolved_at        TIMESTAMPTZ
 );
@@ -416,7 +416,7 @@ CREATE TABLE sync_checkpoints (
 
 CREATE TABLE audit_log (
     id                 BIGSERIAL PRIMARY KEY,
-    actor_id           UUID REFERENCES users(id),
+    actor_id           UUID REFERENCES users(id) ON DELETE SET NULL,
     action             TEXT NOT NULL,
     entity_type        TEXT NOT NULL,
     entity_id          TEXT,

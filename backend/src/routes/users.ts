@@ -47,11 +47,9 @@ usersRouter.post(
 
 const setActiveSchema = z.object({ isActive: z.boolean() });
 
-// Soft-delete: deactivating (rather than hard-DELETEing) a user preserves every job/timecard/chat
-// row that references them (users.id has no ON DELETE CASCADE from those tables — a hard delete
-// would just fail with a foreign-key violation once the account has any history) and login already
-// rejects inactive accounts (`if (!user || !user.is_active) throw ...` in routes/auth.ts), so this
-// takes effect immediately.
+// Soft-delete: reversible, and login already rejects inactive accounts
+// (`if (!user || !user.is_active) throw ...` in routes/auth.ts), so this takes effect immediately.
+// Prefer this over the hard DELETE below when the account might need to come back.
 usersRouter.patch(
   '/:id',
   requireRole('admin'),
@@ -67,6 +65,23 @@ usersRouter.patch(
     );
     if (!rows.length) throw new ApiError(404, 'user_not_found');
     res.json(rows[0]);
+  }),
+);
+
+// Hard delete: permanently removes the login and every purely-personal row that's meaningless
+// without it (timecards, truck inventory, device tokens, crew membership, job assignments,
+// location pings — all ON DELETE CASCADE from users.id). Content the user created (jobs, chat
+// messages, documents, knowledge-base articles, inventory transactions, ...) is kept but its
+// "who did this" attribution becomes NULL — see database/migrations/004_users_hard_delete_set_null.sql.
+// Irreversible, unlike deactivating above.
+usersRouter.delete(
+  '/:id',
+  requireRole('admin'),
+  asyncHandler(async (req, res) => {
+    if (req.params.id === req.user!.id) throw new ApiError(400, 'cannot_delete_self');
+    const { rows } = await pool.query(`DELETE FROM users WHERE id = $1 RETURNING id`, [req.params.id]);
+    if (!rows.length) throw new ApiError(404, 'user_not_found');
+    res.status(204).end();
   }),
 );
 
