@@ -1,6 +1,7 @@
 import { FormEvent, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api/client';
+import { useAuth } from '../context/AuthContext';
 
 interface User {
   id: string;
@@ -24,10 +25,16 @@ const ROLE_LABELS: Record<string, string> = {
 /** Admin-only account provisioning — this app deliberately has no public sign-up (it's an internal
  * crew tool, not a public product); an admin creates accounts for real people here instead. */
 export function UserManagementPage() {
+  const { user: currentUser } = useAuth();
   const queryClient = useQueryClient();
   const { data: users } = useQuery<User[]>({
     queryKey: ['users'],
     queryFn: async () => (await api.get('/users')).data,
+  });
+
+  const setActiveMutation = useMutation({
+    mutationFn: (params: { id: string; isActive: boolean }) => api.patch(`/users/${params.id}`, { isActive: params.isActive }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['users'] }),
   });
 
   return (
@@ -48,6 +55,7 @@ export function UserManagementPage() {
               <th className="px-4 py-3">Role</th>
               <th className="px-4 py-3">Hourly rate</th>
               <th className="px-4 py-3">Status</th>
+              <th className="px-4 py-3" />
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
@@ -62,11 +70,26 @@ export function UserManagementPage() {
                     {u.is_active ? 'active' : 'inactive'}
                   </span>
                 </td>
+                <td className="px-4 py-3 text-right">
+                  {u.id === currentUser?.id ? (
+                    <span className="text-xs text-slate-300">that's you</span>
+                  ) : (
+                    <button
+                      onClick={() => setActiveMutation.mutate({ id: u.id, isActive: !u.is_active })}
+                      disabled={setActiveMutation.isPending}
+                      className={`rounded-md px-3 py-1 text-xs font-medium ${
+                        u.is_active ? 'border border-red-300 text-red-600 hover:bg-red-50' : 'border border-green-300 text-green-700 hover:bg-green-50'
+                      }`}
+                    >
+                      {u.is_active ? 'Deactivate' : 'Reactivate'}
+                    </button>
+                  )}
+                </td>
               </tr>
             ))}
             {!users?.length && (
               <tr>
-                <td colSpan={5} className="px-4 py-8 text-center text-slate-400">
+                <td colSpan={6} className="px-4 py-8 text-center text-slate-400">
                   No users yet.
                 </td>
               </tr>

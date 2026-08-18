@@ -3,7 +3,7 @@ import bcrypt from 'bcryptjs';
 import { z } from 'zod';
 import { pool } from '../config/database';
 import { requireAuth, requireRole } from '../middleware/auth';
-import { asyncHandler } from '../middleware/errorHandler';
+import { asyncHandler, ApiError } from '../middleware/errorHandler';
 
 export const usersRouter = Router();
 usersRouter.use(requireAuth);
@@ -42,6 +42,31 @@ usersRouter.post(
       [body.email, passwordHash, body.fullName, body.role, body.phone ?? null, body.hourlyRateCents],
     );
     res.status(201).json(rows[0]);
+  }),
+);
+
+const setActiveSchema = z.object({ isActive: z.boolean() });
+
+// Soft-delete: deactivating (rather than hard-DELETEing) a user preserves every job/timecard/chat
+// row that references them (users.id has no ON DELETE CASCADE from those tables — a hard delete
+// would just fail with a foreign-key violation once the account has any history) and login already
+// rejects inactive accounts (`if (!user || !user.is_active) throw ...` in routes/auth.ts), so this
+// takes effect immediately.
+usersRouter.patch(
+  '/:id',
+  requireRole('admin'),
+  asyncHandler(async (req, res) => {
+    const body = setActiveSchema.parse(req.body);
+    if (req.params.id === req.user!.id && !body.isActive) {
+      throw new ApiError(400, 'cannot_deactivate_self');
+    }
+    const { rows } = await pool.query(
+      `UPDATE users SET is_active = $2, updated_at = now() WHERE id = $1
+       RETURNING id, email, full_name, role, phone, hourly_rate_cents, is_active`,
+      [req.params.id, body.isActive],
+    );
+    if (!rows.length) throw new ApiError(404, 'user_not_found');
+    res.json(rows[0]);
   }),
 );
 

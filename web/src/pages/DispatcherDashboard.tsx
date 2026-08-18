@@ -108,6 +108,8 @@ function CreateJobForm() {
   const [form, setForm] = useState({
     jobNumber: '',
     title: '',
+    description: '',
+    siteAddress: '',
     geofenceRadiusM: '75',
     scheduledStart: '',
   });
@@ -116,10 +118,12 @@ function CreateJobForm() {
 
   const createMutation = useMutation({
     mutationFn: () => {
-      if (!siteLocation) throw new Error('Click the map to set a site location first.');
+      if (!siteLocation) throw new Error('Look up an address (or click the map) to set a site location first.');
       return api.post('/jobs', {
         jobNumber: form.jobNumber,
         title: form.title,
+        description: form.description || undefined,
+        siteAddress: form.siteAddress || undefined,
         siteLocation,
         geofenceRadiusM: Number(form.geofenceRadiusM),
         geofencePolygon: polygon.length >= 3 ? polygon : undefined,
@@ -129,7 +133,7 @@ function CreateJobForm() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['jobs'] });
-      setForm({ jobNumber: '', title: '', geofenceRadiusM: '75', scheduledStart: '' });
+      setForm({ jobNumber: '', title: '', description: '', siteAddress: '', geofenceRadiusM: '75', scheduledStart: '' });
       setSiteLocation(null);
       setPolygon([]);
     },
@@ -146,6 +150,13 @@ function CreateJobForm() {
         <input required placeholder="Job #" value={form.jobNumber} onChange={(e) => setForm({ ...form, jobNumber: e.target.value })} className="rounded-md border border-slate-300 px-3 py-2 text-sm md:col-span-1" />
         <input required placeholder="Title" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} className="rounded-md border border-slate-300 px-3 py-2 text-sm md:col-span-2" />
         <input type="datetime-local" value={form.scheduledStart} onChange={(e) => setForm({ ...form, scheduledStart: e.target.value })} className="rounded-md border border-slate-300 px-3 py-2 text-sm" />
+        <textarea
+          placeholder="Description"
+          value={form.description}
+          onChange={(e) => setForm({ ...form, description: e.target.value })}
+          rows={2}
+          className="rounded-md border border-slate-300 px-3 py-2 text-sm md:col-span-4"
+        />
       </div>
 
       <div className="flex items-center gap-2">
@@ -165,6 +176,8 @@ function CreateJobForm() {
       </div>
 
       <GeofenceMapPicker
+        address={form.siteAddress}
+        onAddressChange={(siteAddress) => setForm({ ...form, siteAddress })}
         siteLocation={siteLocation}
         radiusM={Number(form.geofenceRadiusM) || 75}
         polygon={polygon}

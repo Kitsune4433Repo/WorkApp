@@ -63,6 +63,7 @@ export function TimecardsPage() {
         {active ? (
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div>
+              <div className="text-sm font-medium text-slate-700">{user?.fullName}</div>
               <div className="text-sm text-slate-500">Clocked in at {new Date(active.clock_in_at).toLocaleTimeString()}</div>
               <div className="text-3xl font-bold text-brand-700">${(active.liveEarningsCents / 100).toFixed(2)}</div>
               <div className="text-sm text-slate-500">{Math.floor(active.liveActiveMinutes / 60)}h {active.liveActiveMinutes % 60}m active{active.onBreak ? ' (on break)' : ''}</div>

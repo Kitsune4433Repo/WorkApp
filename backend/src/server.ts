@@ -2,10 +2,11 @@ import 'dotenv/config';
 import http from 'http';
 import { createApp } from './app';
 import { attachChatServer } from './websocket/chatServer';
-import { bootstrapDatabaseIfNeeded } from './db/bootstrap';
+import { bootstrapDatabaseIfNeeded, applyIncrementalMigrations } from './db/bootstrap';
 
 async function main() {
   await bootstrapDatabaseIfNeeded();
+  await applyIncrementalMigrations();
 
   const app = createApp();
   const server = http.createServer(app);

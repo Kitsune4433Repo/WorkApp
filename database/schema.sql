@@ -18,7 +18,6 @@ CREATE TYPE job_priority         AS ENUM ('low', 'normal', 'high', 'emergency');
 CREATE TYPE inventory_txn_type   AS ENUM ('add', 'subtract', 'transfer_out', 'transfer_in', 'qr_transfer', 'job_consumption', 'stock_correction');
 CREATE TYPE timecard_event_type  AS ENUM ('clock_in', 'break_start', 'break_end', 'clock_out');
 CREATE TYPE channel_type         AS ENUM ('direct', 'job', 'broadcast');
-CREATE TYPE document_type        AS ENUM ('pdf', 'png', 'jpg', 'map', 'manual', 'compliance');
 CREATE TYPE qr_transfer_status   AS ENUM ('pending', 'completed', 'expired', 'cancelled');
 CREATE TYPE sync_resolution      AS ENUM ('client_wins', 'server_wins', 'merged', 'admin_review', 'pending');
 CREATE TYPE device_platform      AS ENUM ('android', 'ios', 'web');
@@ -290,7 +289,7 @@ CREATE INDEX idx_chat_messages_channel_time ON chat_messages (channel_id, sent_a
 CREATE TABLE documents (
     id                 UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     title              TEXT NOT NULL,
-    doc_type           document_type NOT NULL,
+    doc_type           TEXT NOT NULL, -- file extension or MIME type; free-form, any file type is allowed
     category           TEXT,
     job_id             UUID REFERENCES jobs(id) ON DELETE SET NULL,
     current_version    INTEGER NOT NULL DEFAULT 1,

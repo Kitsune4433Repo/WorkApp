@@ -6,7 +6,6 @@ import { useAuth } from '../context/AuthContext';
 
 interface HaveRow {
   material_id: string;
-  sku: string;
   name: string;
   unit: string;
   quantity_have: number;
@@ -43,10 +42,7 @@ export function InventoryLedger() {
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {have?.map((row) => (
           <div key={row.material_id} className="flex items-center justify-between rounded-lg border border-slate-200 bg-white p-4">
-            <div>
-              <div className="font-medium text-slate-900">{row.name}</div>
-              <div className="text-xs text-slate-500">{row.sku}</div>
-            </div>
+            <div className="font-medium text-slate-900">{row.name}</div>
             <div className="flex items-center gap-3">
               <button
                 onClick={() => adjustMutation.mutate({ materialId: row.material_id, delta: -1 })}
@@ -54,7 +50,7 @@ export function InventoryLedger() {
               >
                 −
               </button>
-              <span className="w-10 text-center font-semibold">
+              <span className="w-14 text-center font-semibold">
                 {row.quantity_have} {row.unit}
               </span>
               <button
@@ -75,14 +71,15 @@ export function InventoryLedger() {
 }
 
 function AddMaterialForm() {
+  const { user } = useAuth();
   const queryClient = useQueryClient();
-  const [form, setForm] = useState({ sku: '', name: '', category: '', unit: 'ea' });
+  const [form, setForm] = useState({ name: '', category: '' });
 
   const createMutation = useMutation({
-    mutationFn: () => api.post('/inventory/catalog', form),
+    mutationFn: () => api.post('/inventory/catalog', { ...form, unit: 'unit' }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['inventory'] });
-      setForm({ sku: '', name: '', category: '', unit: 'ea' });
+      queryClient.invalidateQueries({ queryKey: ['inventory', 'have', user?.id] });
+      setForm({ name: '', category: '' });
     },
   });
 
@@ -92,15 +89,14 @@ function AddMaterialForm() {
   }
 
   return (
-    <form onSubmit={onSubmit} className="grid grid-cols-2 gap-3 rounded-lg border border-slate-200 bg-white p-4 md:grid-cols-5">
+    <form onSubmit={onSubmit} className="grid grid-cols-2 gap-3 rounded-lg border border-slate-200 bg-white p-4 md:grid-cols-4">
       <h2 className="col-span-full text-sm font-semibold text-slate-700">Add material to catalog</h2>
-      <input required placeholder="SKU" value={form.sku} onChange={(e) => setForm({ ...form, sku: e.target.value })} className="rounded-md border border-slate-300 px-3 py-2 text-sm" />
       <input required placeholder="Name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="rounded-md border border-slate-300 px-3 py-2 text-sm" />
       <input required placeholder="Category" value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} className="rounded-md border border-slate-300 px-3 py-2 text-sm" />
-      <input placeholder="Unit" value={form.unit} onChange={(e) => setForm({ ...form, unit: e.target.value })} className="rounded-md border border-slate-300 px-3 py-2 text-sm" />
-      <button type="submit" className="rounded-md bg-brand-600 px-3 py-2 text-sm font-medium text-white hover:bg-brand-700">
-        Add
+      <button type="submit" disabled={createMutation.isPending} className="rounded-md bg-brand-600 px-3 py-2 text-sm font-medium text-white hover:bg-brand-700">
+        {createMutation.isPending ? 'Adding…' : 'Add'}
       </button>
+      {createMutation.isError && <p className="col-span-full text-sm text-red-600">Failed to add material.</p>}
     </form>
   );
 }

@@ -13,12 +13,23 @@ inventoryRouter.use(requireAuth);
 // --- Material catalog (dynamic ingestion, feature 8) ------------------------
 
 const materialSchema = z.object({
-  sku: z.string().min(1),
   name: z.string().min(1),
   category: z.string().min(1),
-  unit: z.string().default('ea'),
+  unit: z.string().min(1).default('unit'),
   description: z.string().optional(),
 });
+
+// SKUs are an internal catalog identifier, not something a dispatcher should have to type when
+// adding a material on the fly — generate one so material_catalog.sku (NOT NULL UNIQUE) is
+// satisfied without asking for it in the UI.
+function generateSku(name: string): string {
+  const slug = name
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 20);
+  return `${slug || 'MAT'}-${uuid().slice(0, 8).toUpperCase()}`;
+}
 
 inventoryRouter.get(
   '/catalog',
@@ -42,7 +53,7 @@ inventoryRouter.post(
     const { rows } = await pool.query(
       `INSERT INTO material_catalog (sku, name, category, unit, description, created_by)
        VALUES ($1,$2,$3,$4,$5,$6) RETURNING id`,
-      [body.sku, body.name, body.category, body.unit, body.description ?? null, req.user!.id],
+      [generateSku(body.name), body.name, body.category, body.unit, body.description ?? null, req.user!.id],
     );
     res.status(201).json({ id: rows[0].id });
   }),
@@ -53,10 +64,18 @@ inventoryRouter.post(
 inventoryRouter.get(
   '/have/:userId',
   asyncHandler(async (req, res) => {
+    // LEFT JOIN from the catalog (not an inner join starting at truck_inventory) so a
+    // freshly-added material shows up immediately at quantity 0, ready to adjust — otherwise it's
+    // invisible until the technician has a truck_inventory row for it, which nothing ever creates
+    // on its own.
+    // sku is still returned (unused by the web UI) so the Android client's HaveRowDto, which
+    // requires it, keeps working — this endpoint is shared by both clients.
     const { rows } = await pool.query(
-      `SELECT ti.material_id, m.sku, m.name, m.unit, ti.quantity_have, ti.version, ti.updated_at
-         FROM truck_inventory ti JOIN material_catalog m ON m.id = ti.material_id
-        WHERE ti.user_id = $1
+      `SELECT m.id AS material_id, m.sku, m.name, m.unit, COALESCE(ti.quantity_have, 0) AS quantity_have,
+              COALESCE(ti.version, 0) AS version, ti.updated_at
+         FROM material_catalog m
+         LEFT JOIN truck_inventory ti ON ti.material_id = m.id AND ti.user_id = $1
+        WHERE m.is_active
         ORDER BY m.name`,
       [req.params.userId],
     );

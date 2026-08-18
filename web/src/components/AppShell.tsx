@@ -9,7 +9,7 @@ const NAV = [
   { to: '/inventory', label: 'Inventory' },
   { to: '/timecards', label: 'Timecards' },
   { to: '/chat', label: 'Chat' },
-  { to: '/uploads', label: 'Uploads' },
+  { to: '/uploads', label: 'Resources' },
 ];
 
 const CONFLICT_REVIEW_ROLES = ['admin', 'dispatcher'];

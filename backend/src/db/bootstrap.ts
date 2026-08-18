@@ -26,6 +26,20 @@ export async function bootstrapDatabaseIfNeeded(): Promise<void> {
   }
 }
 
+// Small, individually-guarded/idempotent schema fixes that a *running* deployment needs to pick up
+// even though its database already exists (so bootstrapDatabaseIfNeeded's "only touch an empty
+// DB" gate doesn't apply). Unlike that function, this always runs — each migration is written to
+// safely no-op once already applied, so this is what makes an already-live deploy self-heal on its
+// next boot after a schema-affecting code change, without anyone needing shell access to run
+// `psql -f` by hand.
+const INCREMENTAL_MIGRATIONS = ['database/migrations/002_documents_free_text_doctype.sql'];
+
+export async function applyIncrementalMigrations(): Promise<void> {
+  for (const relativePath of INCREMENTAL_MIGRATIONS) {
+    await pool.query(readRepoFile(relativePath));
+  }
+}
+
 // Resolves relative to the repo root regardless of whether this runs from ts-node (backend/src)
 // or compiled output (backend/dist) — both are one level below backend/, which sits next to database/.
 function readRepoFile(relativePath: string): string {

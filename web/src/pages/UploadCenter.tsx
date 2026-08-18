@@ -6,16 +6,27 @@ interface Document {
   id: string;
   title: string;
   doc_type: string;
+  category: string | null;
   is_map: boolean;
   current_version: number;
   updated_at: string;
 }
 
+const CATEGORIES = ['Production', 'Property Map'] as const;
+
+// Any file type is allowed — this just labels what was uploaded, derived from the file itself
+// rather than asked of the user.
+function deriveDocType(file: File): string {
+  const extMatch = /\.([a-z0-9]+)$/i.exec(file.name);
+  if (extMatch) return extMatch[1].toLowerCase();
+  const subtype = file.type.split('/')[1];
+  return subtype || 'file';
+}
+
 export function UploadCenter() {
   const queryClient = useQueryClient();
   const [title, setTitle] = useState('');
-  const [docType, setDocType] = useState('map');
-  const [isMap, setIsMap] = useState(true);
+  const [category, setCategory] = useState<(typeof CATEGORIES)[number]>('Production');
   const [file, setFile] = useState<File | null>(null);
 
   const { data: documents } = useQuery<Document[]>({
@@ -29,8 +40,9 @@ export function UploadCenter() {
       const form = new FormData();
       form.append('file', file);
       form.append('title', title);
-      form.append('docType', docType);
-      form.append('isMap', String(isMap));
+      form.append('docType', deriveDocType(file));
+      form.append('category', category);
+      form.append('isMap', String(category === 'Property Map'));
       await api.post('/documents', form, { headers: { 'Content-Type': 'multipart/form-data' } });
     },
     onSuccess: () => {
@@ -38,6 +50,11 @@ export function UploadCenter() {
       setTitle('');
       setFile(null);
     },
+  });
+
+  const openMutation = useMutation({
+    mutationFn: async (documentId: string) => (await api.get(`/documents/${documentId}/download`)).data as { url: string },
+    onSuccess: (data) => window.open(data.url, '_blank', 'noopener,noreferrer'),
   });
 
   function onSubmit(e: FormEvent) {
@@ -48,37 +65,42 @@ export function UploadCenter() {
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-2xl font-bold text-slate-900">Resource Uploads</h1>
-        <p className="text-sm text-slate-500">Add site maps, manuals, and field images to the shared library.</p>
+        <h1 className="text-2xl font-bold text-slate-900">Resource Library</h1>
+        <p className="text-sm text-slate-500">Upload site maps, photos, and other job files — any file type is accepted.</p>
       </div>
 
       <form onSubmit={onSubmit} className="grid gap-3 rounded-lg border border-slate-200 bg-white p-4 sm:grid-cols-2 lg:grid-cols-4">
         <input required placeholder="Title" value={title} onChange={(e) => setTitle(e.target.value)} className="rounded-md border border-slate-300 px-3 py-2 text-sm" />
-        <select value={docType} onChange={(e) => setDocType(e.target.value)} className="rounded-md border border-slate-300 px-3 py-2 text-sm">
-          {['pdf', 'png', 'jpg', 'map', 'manual', 'compliance'].map((t) => (
-            <option key={t} value={t}>
-              {t}
+        <select value={category} onChange={(e) => setCategory(e.target.value as (typeof CATEGORIES)[number])} className="rounded-md border border-slate-300 px-3 py-2 text-sm">
+          {CATEGORIES.map((c) => (
+            <option key={c} value={c}>
+              {c}
             </option>
           ))}
         </select>
-        <label className="flex items-center gap-2 text-sm">
-          <input type="checkbox" checked={isMap} onChange={(e) => setIsMap(e.target.checked)} /> Is site map
-        </label>
-        <input required type="file" onChange={(e) => setFile(e.target.files?.[0] ?? null)} className="text-sm" />
-        <button type="submit" disabled={uploadMutation.isPending} className="rounded-md bg-brand-600 px-3 py-2 text-sm font-medium text-white hover:bg-brand-700 lg:col-span-4">
+        <input required type="file" onChange={(e) => setFile(e.target.files?.[0] ?? null)} className="text-sm sm:col-span-2 lg:col-span-1" />
+        <button type="submit" disabled={uploadMutation.isPending} className="rounded-md bg-brand-600 px-3 py-2 text-sm font-medium text-white hover:bg-brand-700">
           {uploadMutation.isPending ? 'Uploading…' : 'Upload'}
         </button>
+        {uploadMutation.isError && <p className="text-sm text-red-600 sm:col-span-2 lg:col-span-4">Failed to upload.</p>}
       </form>
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {documents?.map((doc) => (
-          <div key={doc.id} className="rounded-lg border border-slate-200 bg-white p-4">
+          <button
+            key={doc.id}
+            onClick={() => openMutation.mutate(doc.id)}
+            className="rounded-lg border border-slate-200 bg-white p-4 text-left hover:border-brand-300 hover:shadow-sm"
+          >
             <div className="font-medium text-slate-900">{doc.title}</div>
-            <div className="text-xs text-slate-500">
-              {doc.doc_type} · v{doc.current_version} {doc.is_map && '· map'}
+            <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-500">
+              <span className="rounded-full bg-slate-100 px-2 py-0.5 uppercase">{doc.doc_type}</span>
+              {doc.category && <span className="rounded-full bg-brand-50 px-2 py-0.5 text-brand-700">{doc.category}</span>}
+              <span>v{doc.current_version}</span>
             </div>
-          </div>
+          </button>
         ))}
+        {!documents?.length && <p className="text-slate-400">Nothing uploaded yet.</p>}
       </div>
     </div>
   );

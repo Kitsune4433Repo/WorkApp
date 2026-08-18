@@ -17,7 +17,7 @@ const upload = multer({ limits: { fileSize: 200 * 1024 * 1024 } });
 
 const createDocSchema = z.object({
   title: z.string().min(1),
-  docType: z.enum(['pdf', 'png', 'jpg', 'map', 'manual', 'compliance']),
+  docType: z.string().min(1), // free-form: file extension or MIME type, any file type is allowed
   category: z.string().optional(),
   jobId: z.string().uuid().optional(),
   isMap: z.coerce.boolean().default(false),

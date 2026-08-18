@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { MapContainer, TileLayer, Marker, Circle, Polygon, useMapEvents } from 'react-leaflet';
+import { useEffect, useState } from 'react';
+import { MapContainer, TileLayer, Marker, Circle, Polygon, useMap, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
 import markerIcon2x from 'leaflet/dist/images/marker-icon-2x.png';
 import markerIcon from 'leaflet/dist/images/marker-icon.png';
@@ -19,9 +19,9 @@ export interface LatLng {
   lng: number;
 }
 
-type DrawMode = 'site' | 'geofence';
-
 interface Props {
+  address: string;
+  onAddressChange: (address: string) => void;
   siteLocation: LatLng | null;
   radiusM: number;
   polygon: LatLng[];
@@ -29,44 +29,93 @@ interface Props {
   onPolygonChange: (polygon: LatLng[]) => void;
 }
 
-const DEFAULT_CENTER: LatLng = { lat: 44.9778, lng: -93.265 }; // arbitrary fallback so the map has somewhere to render before a site is set
+// Memphis, TN — dispatch center default.
+const DEFAULT_CENTER: LatLng = { lat: 35.1495, lng: -90.049 };
 
-function ClickHandler({ mode, onSitePick, onPolygonPick }: { mode: DrawMode; onSitePick: (p: LatLng) => void; onPolygonPick: (p: LatLng) => void }) {
+// Nominatim (OpenStreetMap's free geocoder) — fine for this volume of lookups; see usage policy at
+// https://operations.osmfoundation.org/policies/nominatim/. Browsers can't set a custom
+// User-Agent, but Nominatim accepts the browser-supplied Referer as identification for light use.
+async function geocodeAddress(address: string): Promise<LatLng | null> {
+  const url = `https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(address)}`;
+  const res = await fetch(url);
+  if (!res.ok) return null;
+  const results = (await res.json()) as { lat: string; lon: string }[];
+  if (!results.length) return null;
+  return { lat: Number(results[0].lat), lng: Number(results[0].lon) };
+}
+
+function ClickHandler({ onPick }: { onPick: (p: LatLng) => void }) {
   useMapEvents({
     click(e) {
-      const point = { lat: e.latlng.lat, lng: e.latlng.lng };
-      if (mode === 'site') onSitePick(point);
-      else onPolygonPick(point);
+      onPick({ lat: e.latlng.lat, lng: e.latlng.lng });
     },
   });
   return null;
 }
 
-/** Lets a dispatcher draw a precise geofence perimeter, not just set a fallback radius — the
- * backend (jobs.polygonToWkt / fn_point_in_job_geofence) has always supported this, the web UI
- * just never exposed it. */
-export function GeofenceMapPicker({ siteLocation, radiusM, polygon, onSiteLocationChange, onPolygonChange }: Props) {
-  const [mode, setMode] = useState<DrawMode>('site');
+// MapContainer's `center` prop only sets the *initial* view — it doesn't move the map when the
+// prop changes later (e.g. after a geocode result comes in), so panning has to happen imperatively.
+// Only re-centers when the location itself changes (not on every render — the polygon-drawing
+// clicks re-render this component too, and shouldn't reset the user's pan/zoom mid-draw).
+function RecenterOnChange({ location }: { location: LatLng | null }) {
+  const map = useMap();
+  useEffect(() => {
+    if (location) map.setView(location, 17);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location?.lat, location?.lng]);
+  return null;
+}
+
+/** Site location comes from a typed address (geocoded via Nominatim); clicking the map draws the
+ * geofence perimeter instead — the backend (jobs.polygonToWkt / fn_point_in_job_geofence) has
+ * always supported a drawn polygon, the web UI just never exposed it. */
+export function GeofenceMapPicker({ address, onAddressChange, siteLocation, radiusM, polygon, onSiteLocationChange, onPolygonChange }: Props) {
+  const [geocoding, setGeocoding] = useState(false);
+  const [geocodeError, setGeocodeError] = useState<string | null>(null);
+
+  async function handleFindAddress() {
+    if (!address.trim()) return;
+    setGeocoding(true);
+    setGeocodeError(null);
+    try {
+      const location = await geocodeAddress(address.trim());
+      if (location) onSiteLocationChange(location);
+      else setGeocodeError("Couldn't find that address — try adding city/state, or click the map directly.");
+    } catch {
+      setGeocodeError('Address lookup failed. Try again, or click the map directly.');
+    } finally {
+      setGeocoding(false);
+    }
+  }
 
   return (
     <div className="space-y-2">
+      <div className="flex gap-2">
+        <input
+          value={address}
+          onChange={(e) => onAddressChange(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              handleFindAddress();
+            }
+          }}
+          placeholder="Site address (e.g. 142 Elm St, Memphis, TN)"
+          className="flex-1 rounded-md border border-slate-300 px-3 py-2 text-sm"
+        />
+        <button
+          type="button"
+          onClick={handleFindAddress}
+          disabled={geocoding}
+          className="rounded-md bg-brand-600 px-3 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-50"
+        >
+          {geocoding ? 'Finding…' : 'Find on map'}
+        </button>
+      </div>
+      {geocodeError && <p className="text-xs text-red-600">{geocodeError}</p>}
+
       <div className="flex items-center justify-between">
-        <div className="flex gap-2">
-          <button
-            type="button"
-            onClick={() => setMode('site')}
-            className={`rounded-md px-3 py-1 text-xs font-medium ${mode === 'site' ? 'bg-brand-600 text-white' : 'border border-slate-300 text-slate-600'}`}
-          >
-            Click to set site
-          </button>
-          <button
-            type="button"
-            onClick={() => setMode('geofence')}
-            className={`rounded-md px-3 py-1 text-xs font-medium ${mode === 'geofence' ? 'bg-brand-600 text-white' : 'border border-slate-300 text-slate-600'}`}
-          >
-            Click to draw geofence ({polygon.length} pt{polygon.length === 1 ? '' : 's'})
-          </button>
-        </div>
+        <p className="text-xs text-slate-500">Click the map to draw a geofence perimeter ({polygon.length} pt{polygon.length === 1 ? '' : 's'}).</p>
         {polygon.length > 0 && (
           <div className="flex gap-2">
             <button type="button" onClick={() => onPolygonChange(polygon.slice(0, -1))} className="text-xs text-slate-500 hover:underline">
@@ -80,16 +129,13 @@ export function GeofenceMapPicker({ siteLocation, radiusM, polygon, onSiteLocati
       </div>
 
       <div className="h-72 overflow-hidden rounded-md border border-slate-300">
-        <MapContainer center={siteLocation ?? DEFAULT_CENTER} zoom={siteLocation ? 17 : 12} className="h-full w-full">
+        <MapContainer center={siteLocation ?? DEFAULT_CENTER} zoom={siteLocation ? 17 : 11} className="h-full w-full">
           <TileLayer
             attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
           />
-          <ClickHandler
-            mode={mode}
-            onSitePick={onSiteLocationChange}
-            onPolygonPick={(p) => onPolygonChange([...polygon, p])}
-          />
+          <RecenterOnChange location={siteLocation} />
+          <ClickHandler onPick={(p) => onPolygonChange([...polygon, p])} />
           {siteLocation && <Marker position={siteLocation} />}
           {siteLocation && polygon.length === 0 && <Circle center={siteLocation} radius={radiusM} pathOptions={{ color: '#2563eb' }} />}
           {polygon.length >= 2 && <Polygon positions={polygon} pathOptions={{ color: '#16a34a' }} />}
