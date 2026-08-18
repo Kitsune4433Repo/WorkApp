@@ -32,6 +32,19 @@ export function InventoryLedger() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['inventory', 'have', user?.id] }),
   });
 
+  const removeMutation = useMutation({
+    mutationFn: (materialId: string) => api.delete(`/inventory/catalog/${materialId}`),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['inventory', 'have', user?.id] }),
+  });
+
+  const canManageCatalog = user?.role === 'admin' || user?.role === 'dispatcher' || user?.role === 'crew_lead';
+
+  function onRemove(row: HaveRow) {
+    if (window.confirm(`Remove "${row.name}" from the material catalog? This won't affect past usage history.`)) {
+      removeMutation.mutate(row.material_id);
+    }
+  }
+
   return (
     <div className="space-y-8">
       <div>
@@ -59,6 +72,15 @@ export function InventoryLedger() {
               >
                 +
               </button>
+              {canManageCatalog && (
+                <button
+                  onClick={() => onRemove(row)}
+                  disabled={removeMutation.isPending}
+                  className="ml-1 rounded-md border border-red-300 px-2 py-1 text-xs font-medium text-red-600 hover:bg-red-50"
+                >
+                  Remove
+                </button>
+              )}
             </div>
           </div>
         ))}

@@ -59,6 +59,23 @@ inventoryRouter.post(
   }),
 );
 
+// Soft-delete: material_catalog.id is referenced by truck_inventory, job_required_materials, and
+// inventory_transactions with no cascade, so a hard DELETE would fail (FK violation) the moment a
+// material has any usage history. is_active already gates both /catalog and /have above, so
+// flipping it off here removes the material from view everywhere immediately without touching history.
+inventoryRouter.delete(
+  '/catalog/:id',
+  requireRole('admin', 'dispatcher', 'crew_lead'),
+  asyncHandler(async (req, res) => {
+    const { rows } = await pool.query(
+      `UPDATE material_catalog SET is_active = false WHERE id = $1 RETURNING id`,
+      [req.params.id],
+    );
+    if (!rows.length) throw new ApiError(404, 'material_not_found');
+    res.status(204).end();
+  }),
+);
+
 // --- "Have" ledger: per-technician truck inventory ---------------------------
 
 inventoryRouter.get(

@@ -1,4 +1,4 @@
-import { FormEvent, useState } from 'react';
+import { Fragment, FormEvent, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api/client';
 import { useAuth } from '../context/AuthContext';
@@ -14,6 +14,8 @@ interface Job {
   is_active: boolean;
   lat: number | null;
   lng: number | null;
+  geofence_geojson: string | null;
+  geofence_radius_m: number | null;
   scheduled_start: string | null;
   recurring_days_of_week: number[] | null;
   recurring_start_time: string | null;
@@ -39,6 +41,26 @@ function formatRecurrence(job: Job): string | null {
   return `Recurs: ${days}${time}`;
 }
 
+/** Shared by the create form and the per-job schedule editor below. */
+function DayPicker({ days, onToggle }: { days: number[]; onToggle: (day: number) => void }) {
+  return (
+    <div className="flex flex-wrap gap-2">
+      {DAY_LABELS.map((label, day) => (
+        <button
+          type="button"
+          key={day}
+          onClick={() => onToggle(day)}
+          className={`rounded-md border px-3 py-1 text-xs font-medium ${
+            days.includes(day) ? 'border-brand-600 bg-brand-600 text-white' : 'border-slate-300 text-slate-600 hover:bg-slate-50'
+          }`}
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export function DispatcherDashboard() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
@@ -47,6 +69,8 @@ export function DispatcherDashboard() {
     queryFn: async () => (await api.get('/jobs')).data,
     refetchInterval: 30_000,
   });
+
+  const [editingJobId, setEditingJobId] = useState<string | null>(null);
 
   const startMutation = useMutation({
     mutationFn: (jobId: string) => api.post(`/jobs/${jobId}/start`),
@@ -97,52 +121,68 @@ export function DispatcherDashboard() {
           <tbody className="divide-y divide-slate-100">
             {jobs?.map((job) => {
               const recurrence = formatRecurrence(job);
+              const isEditing = editingJobId === job.id;
               return (
-                <tr key={job.id}>
-                  <td className="px-4 py-3 font-medium">{job.job_number}</td>
-                  <td className="px-4 py-3">{job.title}</td>
-                  <td className="px-4 py-3">
-                    <span className={`rounded-full px-2 py-1 text-xs font-medium capitalize ${PRIORITY_COLORS[job.priority] ?? ''}`}>
-                      {job.priority}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3">
-                    <span className={`rounded-full px-2 py-1 text-xs font-medium ${job.is_active ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'}`}>
-                      {job.is_active ? 'Active' : 'Inactive'}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3">
-                    {recurrence ?? (job.scheduled_start ? new Date(job.scheduled_start).toLocaleString() : '—')}
-                  </td>
-                  {canDispatch && (
-                    <td className="px-4 py-3 text-right space-x-2">
-                      {job.is_active ? (
-                        <button
-                          onClick={() => stopMutation.mutate(job.id)}
-                          disabled={stopMutation.isPending}
-                          className="rounded-md bg-slate-600 px-3 py-1 text-xs font-medium text-white hover:bg-slate-700"
-                        >
-                          Stop
-                        </button>
-                      ) : (
-                        <button
-                          onClick={() => startMutation.mutate(job.id)}
-                          disabled={startMutation.isPending}
-                          className="rounded-md bg-brand-600 px-3 py-1 text-xs font-medium text-white hover:bg-brand-700"
-                        >
-                          Start
-                        </button>
-                      )}
-                      <button
-                        onClick={() => onRemove(job)}
-                        disabled={deleteMutation.isPending}
-                        className="rounded-md border border-red-300 px-3 py-1 text-xs font-medium text-red-600 hover:bg-red-50"
-                      >
-                        Remove
-                      </button>
+                <Fragment key={job.id}>
+                  <tr>
+                    <td className="px-4 py-3 font-medium">{job.job_number}</td>
+                    <td className="px-4 py-3">{job.title}</td>
+                    <td className="px-4 py-3">
+                      <span className={`rounded-full px-2 py-1 text-xs font-medium capitalize ${PRIORITY_COLORS[job.priority] ?? ''}`}>
+                        {job.priority}
+                      </span>
                     </td>
+                    <td className="px-4 py-3">
+                      <span className={`rounded-full px-2 py-1 text-xs font-medium ${job.is_active ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'}`}>
+                        {job.is_active ? 'Active' : 'Inactive'}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3">
+                      {recurrence ?? (job.scheduled_start ? new Date(job.scheduled_start).toLocaleString() : '—')}
+                    </td>
+                    {canDispatch && (
+                      <td className="px-4 py-3 text-right space-x-2">
+                        {job.is_active ? (
+                          <button
+                            onClick={() => stopMutation.mutate(job.id)}
+                            disabled={stopMutation.isPending}
+                            className="rounded-md bg-slate-600 px-3 py-1 text-xs font-medium text-white hover:bg-slate-700"
+                          >
+                            Stop
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => startMutation.mutate(job.id)}
+                            disabled={startMutation.isPending}
+                            className="rounded-md bg-brand-600 px-3 py-1 text-xs font-medium text-white hover:bg-brand-700"
+                          >
+                            Start
+                          </button>
+                        )}
+                        <button
+                          onClick={() => setEditingJobId(isEditing ? null : job.id)}
+                          className="rounded-md border border-slate-300 px-3 py-1 text-xs font-medium text-slate-600 hover:bg-slate-50"
+                        >
+                          {isEditing ? 'Close' : 'Edit schedule'}
+                        </button>
+                        <button
+                          onClick={() => onRemove(job)}
+                          disabled={deleteMutation.isPending}
+                          className="rounded-md border border-red-300 px-3 py-1 text-xs font-medium text-red-600 hover:bg-red-50"
+                        >
+                          Remove
+                        </button>
+                      </td>
+                    )}
+                  </tr>
+                  {isEditing && (
+                    <tr>
+                      <td colSpan={canDispatch ? 6 : 5} className="bg-slate-50 px-4 py-4">
+                        <JobScheduleEditor job={job} onDone={() => setEditingJobId(null)} />
+                      </td>
+                    </tr>
                   )}
-                </tr>
+                </Fragment>
               );
             })}
             {!jobs?.length && (
@@ -154,6 +194,73 @@ export function DispatcherDashboard() {
             )}
           </tbody>
         </table>
+      </div>
+    </div>
+  );
+}
+
+/** Lets a dispatcher change or drop an already-created job's recurring days without recreating the
+ * job — e.g. "we're not working this one on Fridays anymore" or "add Tuesday too". */
+function JobScheduleEditor({ job, onDone }: { job: Job; onDone: () => void }) {
+  const queryClient = useQueryClient();
+  const [days, setDays] = useState<number[]>(job.recurring_days_of_week ?? []);
+  const [startTime, setStartTime] = useState(job.recurring_start_time?.slice(0, 5) ?? '');
+  const [endTime, setEndTime] = useState(job.recurring_end_time?.slice(0, 5) ?? '');
+  const [until, setUntil] = useState(job.recurring_until?.slice(0, 10) ?? '');
+
+  function toggleDay(day: number) {
+    setDays((current) => (current.includes(day) ? current.filter((d) => d !== day) : [...current, day].sort()));
+  }
+
+  const saveMutation = useMutation({
+    mutationFn: () =>
+      api.patch(`/jobs/${job.id}`, {
+        recurringDaysOfWeek: days,
+        recurringStartTime: days.length && startTime ? startTime : null,
+        recurringEndTime: days.length && endTime ? endTime : null,
+        recurringUntil: days.length && until ? until : null,
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['jobs'] });
+      onDone();
+    },
+  });
+
+  return (
+    <div className="space-y-3">
+      <p className="text-sm font-medium text-slate-700">
+        Weekly schedule for {job.job_number} — remove a day to stop working it, or add one to pick up more days.
+      </p>
+      <DayPicker days={days} onToggle={toggleDay} />
+      {days.length > 0 && (
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
+          <div>
+            <label className="text-xs text-slate-500">Start time</label>
+            <input type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+          </div>
+          <div>
+            <label className="text-xs text-slate-500">End time</label>
+            <input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+          </div>
+          <div>
+            <label className="text-xs text-slate-500">Repeat until (optional)</label>
+            <input type="date" value={until} onChange={(e) => setUntil(e.target.value)} className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+          </div>
+        </div>
+      )}
+      {!days.length && <p className="text-xs text-slate-500">No days selected — saving will remove weekly recurrence from this job.</p>}
+      {saveMutation.isError && <p className="text-sm text-red-600">Failed to save schedule.</p>}
+      <div className="flex gap-2">
+        <button
+          onClick={() => saveMutation.mutate()}
+          disabled={saveMutation.isPending}
+          className="rounded-md bg-brand-600 px-3 py-2 text-sm font-medium text-white hover:bg-brand-700"
+        >
+          {saveMutation.isPending ? 'Saving…' : 'Save schedule'}
+        </button>
+        <button type="button" onClick={onDone} className="rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-600 hover:bg-slate-100">
+          Cancel
+        </button>
       </div>
     </div>
   );
@@ -280,22 +387,9 @@ function CreateJobForm() {
       <div className="space-y-2 rounded-md border border-slate-200 p-3">
         <p className="text-sm font-medium text-slate-700">Weekly schedule</p>
         <p className="text-xs text-slate-500">
-          Leave the one-time date/time above and pick days here instead to have this job repeat every week. Leave both blank for an unscheduled job.
+          Leave the one-time date/time above and pick days here instead to have this job repeat every week. Leave both blank for an unscheduled job. You can edit or remove days later from the job row.
         </p>
-        <div className="flex flex-wrap gap-2">
-          {DAY_LABELS.map((label, day) => (
-            <button
-              type="button"
-              key={day}
-              onClick={() => toggleDay(day)}
-              className={`rounded-md border px-3 py-1 text-xs font-medium ${
-                recurringDays.includes(day) ? 'border-brand-600 bg-brand-600 text-white' : 'border-slate-300 text-slate-600 hover:bg-slate-50'
-              }`}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
+        <DayPicker days={recurringDays} onToggle={toggleDay} />
         {recurringDays.length > 0 && (
           <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
             <div>

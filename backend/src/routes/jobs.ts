@@ -52,6 +52,7 @@ jobsRouter.get(
     const { rows } = await pool.query(
       `SELECT j.id, j.job_number, j.title, j.status, j.priority, (j.status = 'in_progress') AS is_active,
               ST_Y(j.site_location::geometry) AS lat, ST_X(j.site_location::geometry) AS lng,
+              ST_AsGeoJSON(j.geofence::geometry) AS geofence_geojson, j.geofence_radius_m,
               j.scheduled_start, j.scheduled_end, j.crew_id,
               j.recurring_days_of_week, j.recurring_start_time, j.recurring_end_time, j.recurring_until,
               j.started_at, j.stopped_at
@@ -186,6 +187,12 @@ jobsRouter.patch(
       scheduledStart: z.string().datetime().optional(),
       scheduledEnd: z.string().datetime().optional(),
       priority: z.enum(['low', 'medium', 'high', 'urgent']).optional(),
+      // Editing the weekly schedule of an already-created job — send an empty array to drop
+      // recurrence entirely (e.g. "we're not working this job on Fridays anymore").
+      recurringDaysOfWeek: z.array(z.number().int().min(0).max(6)).optional(),
+      recurringStartTime: timeOfDaySchema.nullable().optional(),
+      recurringEndTime: timeOfDaySchema.nullable().optional(),
+      recurringUntil: z.string().date().nullable().optional(),
     });
     const body = schema.parse(req.body);
     const sets: string[] = [];
@@ -195,6 +202,10 @@ jobsRouter.patch(
       ['scheduledStart', 'scheduled_start'],
       ['scheduledEnd', 'scheduled_end'],
       ['priority', 'priority'],
+      ['recurringDaysOfWeek', 'recurring_days_of_week'],
+      ['recurringStartTime', 'recurring_start_time'],
+      ['recurringEndTime', 'recurring_end_time'],
+      ['recurringUntil', 'recurring_until'],
     ] as const) {
       const value = (body as Record<string, unknown>)[key];
       if (value !== undefined) {
