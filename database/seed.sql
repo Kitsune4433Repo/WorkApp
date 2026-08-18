@@ -25,7 +25,7 @@ SELECT
     'Fiber splice — 142 Elm St',
     'Splice new drop into existing closure, test end-to-end loss.',
     'scheduled',
-    'normal',
+    'medium',
     '142 Elm St, Springfield',
     ST_GeogFromText('SRID=4326;POINT(-93.2650 44.9778)'),
     75,

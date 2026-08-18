@@ -32,7 +32,10 @@ export async function bootstrapDatabaseIfNeeded(): Promise<void> {
 // safely no-op once already applied, so this is what makes an already-live deploy self-heal on its
 // next boot after a schema-affecting code change, without anyone needing shell access to run
 // `psql -f` by hand.
-const INCREMENTAL_MIGRATIONS = ['database/migrations/002_documents_free_text_doctype.sql'];
+const INCREMENTAL_MIGRATIONS = [
+  'database/migrations/002_documents_free_text_doctype.sql',
+  'database/migrations/003_job_priority_recurrence_start_stop.sql',
+];
 
 export async function applyIncrementalMigrations(): Promise<void> {
   for (const relativePath of INCREMENTAL_MIGRATIONS) {

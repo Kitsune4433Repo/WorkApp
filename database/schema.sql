@@ -14,7 +14,7 @@ CREATE EXTENSION IF NOT EXISTS citext;
 
 CREATE TYPE user_role            AS ENUM ('admin', 'dispatcher', 'crew_lead', 'technician');
 CREATE TYPE job_status           AS ENUM ('draft', 'scheduled', 'dispatched', 'in_progress', 'blocked', 'completed', 'closed', 'cancelled');
-CREATE TYPE job_priority         AS ENUM ('low', 'normal', 'high', 'emergency');
+CREATE TYPE job_priority         AS ENUM ('low', 'medium', 'high', 'urgent');
 CREATE TYPE inventory_txn_type   AS ENUM ('add', 'subtract', 'transfer_out', 'transfer_in', 'qr_transfer', 'job_consumption', 'stock_correction');
 CREATE TYPE timecard_event_type  AS ENUM ('clock_in', 'break_start', 'break_end', 'clock_out');
 CREATE TYPE channel_type         AS ENUM ('direct', 'job', 'broadcast');
@@ -73,7 +73,7 @@ CREATE TABLE jobs (
     title              TEXT NOT NULL,
     description        TEXT,
     status             job_status NOT NULL DEFAULT 'draft',
-    priority           job_priority NOT NULL DEFAULT 'normal',
+    priority           job_priority NOT NULL DEFAULT 'medium',
     site_address       TEXT,
     site_location      GEOGRAPHY(POINT, 4326) NOT NULL,
     -- Geofence perimeter around the job site; clock-in/out is validated with ST_Covers/ST_DWithin against this.
@@ -81,7 +81,15 @@ CREATE TABLE jobs (
     geofence_radius_m  INTEGER, -- fallback circular geofence when no polygon is drawn
     scheduled_start    TIMESTAMPTZ,
     scheduled_end      TIMESTAMPTZ,
+    -- Weekly recurrence: when set, the job repeats every week on these days (0=Sunday..6=Saturday) at
+    -- the given time-of-day, instead of (or in addition to) the one-off scheduled_start/scheduled_end.
+    recurring_days_of_week SMALLINT[],
+    recurring_start_time   TIME,
+    recurring_end_time     TIME,
+    recurring_until        DATE,
     dispatched_at      TIMESTAMPTZ,
+    started_at         TIMESTAMPTZ,
+    stopped_at         TIMESTAMPTZ,
     completed_at       TIMESTAMPTZ,
     closed_at          TIMESTAMPTZ,
     created_by         UUID NOT NULL REFERENCES users(id),

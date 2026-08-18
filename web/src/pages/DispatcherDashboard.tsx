@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import { GeofenceMapPicker, LatLng } from '../components/GeofenceMapPicker';
+import { JobsMap } from '../components/JobsMap';
 
 interface Job {
   id: string;
@@ -10,21 +11,33 @@ interface Job {
   title: string;
   status: string;
   priority: string;
-  lat: number;
-  lng: number;
+  is_active: boolean;
+  lat: number | null;
+  lng: number | null;
   scheduled_start: string | null;
+  recurring_days_of_week: number[] | null;
+  recurring_start_time: string | null;
+  recurring_end_time: string | null;
+  recurring_until: string | null;
 }
 
-const STATUS_COLORS: Record<string, string> = {
-  draft: 'bg-slate-100 text-slate-700',
-  scheduled: 'bg-blue-100 text-blue-700',
-  dispatched: 'bg-amber-100 text-amber-700',
-  in_progress: 'bg-purple-100 text-purple-700',
-  blocked: 'bg-red-100 text-red-700',
-  completed: 'bg-green-100 text-green-700',
-  closed: 'bg-slate-200 text-slate-600',
-  cancelled: 'bg-red-50 text-red-500',
+const PRIORITIES = ['low', 'medium', 'high', 'urgent'] as const;
+
+const PRIORITY_COLORS: Record<string, string> = {
+  low: 'bg-slate-100 text-slate-600',
+  medium: 'bg-blue-100 text-blue-700',
+  high: 'bg-amber-100 text-amber-700',
+  urgent: 'bg-red-100 text-red-700',
 };
+
+const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+function formatRecurrence(job: Job): string | null {
+  if (!job.recurring_days_of_week?.length) return null;
+  const days = [...job.recurring_days_of_week].sort().map((d) => DAY_LABELS[d]).join(', ');
+  const time = job.recurring_start_time ? ` at ${job.recurring_start_time}` : '';
+  return `Recurs: ${days}${time}`;
+}
 
 export function DispatcherDashboard() {
   const { user } = useAuth();
@@ -35,8 +48,13 @@ export function DispatcherDashboard() {
     refetchInterval: 30_000,
   });
 
-  const dispatchMutation = useMutation({
-    mutationFn: (jobId: string) => api.post(`/jobs/${jobId}/dispatch`),
+  const startMutation = useMutation({
+    mutationFn: (jobId: string) => api.post(`/jobs/${jobId}/start`),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['jobs'] }),
+  });
+
+  const stopMutation = useMutation({
+    mutationFn: (jobId: string) => api.post(`/jobs/${jobId}/stop`),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['jobs'] }),
   });
 
@@ -60,6 +78,8 @@ export function DispatcherDashboard() {
         <p className="text-sm text-slate-500">Schedule, modify, and push work orders to field devices.</p>
       </div>
 
+      <JobsMap jobs={jobs ?? []} />
+
       {canDispatch && <CreateJobForm />}
 
       <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
@@ -75,38 +95,56 @@ export function DispatcherDashboard() {
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
-            {jobs?.map((job) => (
-              <tr key={job.id}>
-                <td className="px-4 py-3 font-medium">{job.job_number}</td>
-                <td className="px-4 py-3">{job.title}</td>
-                <td className="px-4 py-3 capitalize">{job.priority}</td>
-                <td className="px-4 py-3">
-                  <span className={`rounded-full px-2 py-1 text-xs font-medium ${STATUS_COLORS[job.status] ?? ''}`}>
-                    {job.status.replace('_', ' ')}
-                  </span>
-                </td>
-                <td className="px-4 py-3">{job.scheduled_start ? new Date(job.scheduled_start).toLocaleString() : '—'}</td>
-                {canDispatch && (
-                  <td className="px-4 py-3 text-right space-x-2">
-                    {job.status === 'scheduled' && (
-                      <button
-                        onClick={() => dispatchMutation.mutate(job.id)}
-                        className="rounded-md bg-brand-600 px-3 py-1 text-xs font-medium text-white hover:bg-brand-700"
-                      >
-                        Dispatch
-                      </button>
-                    )}
-                    <button
-                      onClick={() => onRemove(job)}
-                      disabled={deleteMutation.isPending}
-                      className="rounded-md border border-red-300 px-3 py-1 text-xs font-medium text-red-600 hover:bg-red-50"
-                    >
-                      Remove
-                    </button>
+            {jobs?.map((job) => {
+              const recurrence = formatRecurrence(job);
+              return (
+                <tr key={job.id}>
+                  <td className="px-4 py-3 font-medium">{job.job_number}</td>
+                  <td className="px-4 py-3">{job.title}</td>
+                  <td className="px-4 py-3">
+                    <span className={`rounded-full px-2 py-1 text-xs font-medium capitalize ${PRIORITY_COLORS[job.priority] ?? ''}`}>
+                      {job.priority}
+                    </span>
                   </td>
-                )}
-              </tr>
-            ))}
+                  <td className="px-4 py-3">
+                    <span className={`rounded-full px-2 py-1 text-xs font-medium ${job.is_active ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'}`}>
+                      {job.is_active ? 'Active' : 'Inactive'}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3">
+                    {recurrence ?? (job.scheduled_start ? new Date(job.scheduled_start).toLocaleString() : '—')}
+                  </td>
+                  {canDispatch && (
+                    <td className="px-4 py-3 text-right space-x-2">
+                      {job.is_active ? (
+                        <button
+                          onClick={() => stopMutation.mutate(job.id)}
+                          disabled={stopMutation.isPending}
+                          className="rounded-md bg-slate-600 px-3 py-1 text-xs font-medium text-white hover:bg-slate-700"
+                        >
+                          Stop
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => startMutation.mutate(job.id)}
+                          disabled={startMutation.isPending}
+                          className="rounded-md bg-brand-600 px-3 py-1 text-xs font-medium text-white hover:bg-brand-700"
+                        >
+                          Start
+                        </button>
+                      )}
+                      <button
+                        onClick={() => onRemove(job)}
+                        disabled={deleteMutation.isPending}
+                        className="rounded-md border border-red-300 px-3 py-1 text-xs font-medium text-red-600 hover:bg-red-50"
+                      >
+                        Remove
+                      </button>
+                    </td>
+                  )}
+                </tr>
+              );
+            })}
             {!jobs?.length && (
               <tr>
                 <td colSpan={6} className="px-4 py-8 text-center text-slate-400">
@@ -128,11 +166,20 @@ function CreateJobForm() {
     title: '',
     description: '',
     siteAddress: '',
+    priority: 'medium' as (typeof PRIORITIES)[number],
     geofenceRadiusM: '75',
     scheduledStart: '',
+    recurringStartTime: '',
+    recurringEndTime: '',
+    recurringUntil: '',
   });
   const [siteLocation, setSiteLocation] = useState<LatLng | null>(null);
   const [polygon, setPolygon] = useState<LatLng[]>([]);
+  const [recurringDays, setRecurringDays] = useState<number[]>([]);
+
+  function toggleDay(day: number) {
+    setRecurringDays((days) => (days.includes(day) ? days.filter((d) => d !== day) : [...days, day].sort()));
+  }
 
   const createMutation = useMutation({
     mutationFn: () => {
@@ -141,19 +188,36 @@ function CreateJobForm() {
         jobNumber: form.jobNumber,
         title: form.title,
         description: form.description || undefined,
+        priority: form.priority,
         siteAddress: form.siteAddress || undefined,
         siteLocation,
         geofenceRadiusM: Number(form.geofenceRadiusM),
         geofencePolygon: polygon.length >= 3 ? polygon : undefined,
         scheduledStart: form.scheduledStart ? new Date(form.scheduledStart).toISOString() : undefined,
+        recurringDaysOfWeek: recurringDays.length ? recurringDays : undefined,
+        recurringStartTime: recurringDays.length && form.recurringStartTime ? form.recurringStartTime : undefined,
+        recurringEndTime: recurringDays.length && form.recurringEndTime ? form.recurringEndTime : undefined,
+        recurringUntil: recurringDays.length && form.recurringUntil ? form.recurringUntil : undefined,
         assigneeUserIds: [],
       });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['jobs'] });
-      setForm({ jobNumber: '', title: '', description: '', siteAddress: '', geofenceRadiusM: '75', scheduledStart: '' });
+      setForm({
+        jobNumber: '',
+        title: '',
+        description: '',
+        siteAddress: '',
+        priority: 'medium',
+        geofenceRadiusM: '75',
+        scheduledStart: '',
+        recurringStartTime: '',
+        recurringEndTime: '',
+        recurringUntil: '',
+      });
       setSiteLocation(null);
       setPolygon([]);
+      setRecurringDays([]);
     },
   });
 
@@ -167,7 +231,17 @@ function CreateJobForm() {
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         <input required placeholder="Job #" value={form.jobNumber} onChange={(e) => setForm({ ...form, jobNumber: e.target.value })} className="rounded-md border border-slate-300 px-3 py-2 text-sm md:col-span-1" />
         <input required placeholder="Title" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} className="rounded-md border border-slate-300 px-3 py-2 text-sm md:col-span-2" />
-        <input type="datetime-local" value={form.scheduledStart} onChange={(e) => setForm({ ...form, scheduledStart: e.target.value })} className="rounded-md border border-slate-300 px-3 py-2 text-sm" />
+        <select
+          value={form.priority}
+          onChange={(e) => setForm({ ...form, priority: e.target.value as (typeof PRIORITIES)[number] })}
+          className="rounded-md border border-slate-300 px-3 py-2 text-sm capitalize"
+        >
+          {PRIORITIES.map((p) => (
+            <option key={p} value={p} className="capitalize">
+              {p}
+            </option>
+          ))}
+        </select>
         <textarea
           placeholder="Description"
           value={form.description}
@@ -202,6 +276,58 @@ function CreateJobForm() {
         onSiteLocationChange={setSiteLocation}
         onPolygonChange={setPolygon}
       />
+
+      <div className="space-y-2 rounded-md border border-slate-200 p-3">
+        <p className="text-sm font-medium text-slate-700">Weekly schedule</p>
+        <p className="text-xs text-slate-500">
+          Leave the one-time date/time above and pick days here instead to have this job repeat every week. Leave both blank for an unscheduled job.
+        </p>
+        <div className="flex flex-wrap gap-2">
+          {DAY_LABELS.map((label, day) => (
+            <button
+              type="button"
+              key={day}
+              onClick={() => toggleDay(day)}
+              className={`rounded-md border px-3 py-1 text-xs font-medium ${
+                recurringDays.includes(day) ? 'border-brand-600 bg-brand-600 text-white' : 'border-slate-300 text-slate-600 hover:bg-slate-50'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        {recurringDays.length > 0 && (
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
+            <div>
+              <label className="text-xs text-slate-500">Start time</label>
+              <input
+                type="time"
+                value={form.recurringStartTime}
+                onChange={(e) => setForm({ ...form, recurringStartTime: e.target.value })}
+                className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+              />
+            </div>
+            <div>
+              <label className="text-xs text-slate-500">End time</label>
+              <input
+                type="time"
+                value={form.recurringEndTime}
+                onChange={(e) => setForm({ ...form, recurringEndTime: e.target.value })}
+                className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+              />
+            </div>
+            <div>
+              <label className="text-xs text-slate-500">Repeat until (optional)</label>
+              <input
+                type="date"
+                value={form.recurringUntil}
+                onChange={(e) => setForm({ ...form, recurringUntil: e.target.value })}
+                className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+              />
+            </div>
+          </div>
+        )}
+      </div>
 
       {createMutation.isError && (
         <p className="text-sm text-red-600">{(createMutation.error as Error)?.message ?? 'Failed to create job.'}</p>

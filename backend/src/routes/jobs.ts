@@ -11,18 +11,25 @@ jobsRouter.use(requireAuth);
 
 const pointSchema = z.object({ lat: z.number(), lng: z.number() });
 const polygonSchema = z.array(pointSchema).min(3);
+const timeOfDaySchema = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'expected HH:MM');
 
 const createJobSchema = z.object({
   jobNumber: z.string(),
   title: z.string().min(1),
   description: z.string().optional(),
-  priority: z.enum(['low', 'normal', 'high', 'emergency']).default('normal'),
+  priority: z.enum(['low', 'medium', 'high', 'urgent']).default('medium'),
   siteAddress: z.string().optional(),
   siteLocation: pointSchema,
   geofencePolygon: polygonSchema.optional(),
   geofenceRadiusM: z.number().int().positive().optional(),
   scheduledStart: z.string().datetime().optional(),
   scheduledEnd: z.string().datetime().optional(),
+  // Weekly recurrence — 0=Sunday..6=Saturday. When set, the job repeats on these days instead of
+  // (or alongside) the one-off scheduledStart/scheduledEnd above.
+  recurringDaysOfWeek: z.array(z.number().int().min(0).max(6)).min(1).optional(),
+  recurringStartTime: timeOfDaySchema.optional(),
+  recurringEndTime: timeOfDaySchema.optional(),
+  recurringUntil: z.string().date().optional(),
   crewId: z.string().uuid().optional(),
   assigneeUserIds: z.array(z.string().uuid()).default([]),
 });
@@ -43,9 +50,11 @@ jobsRouter.get(
     }
 
     const { rows } = await pool.query(
-      `SELECT j.id, j.job_number, j.title, j.status, j.priority,
+      `SELECT j.id, j.job_number, j.title, j.status, j.priority, (j.status = 'in_progress') AS is_active,
               ST_Y(j.site_location::geometry) AS lat, ST_X(j.site_location::geometry) AS lng,
-              j.scheduled_start, j.scheduled_end, j.crew_id
+              j.scheduled_start, j.scheduled_end, j.crew_id,
+              j.recurring_days_of_week, j.recurring_start_time, j.recurring_end_time, j.recurring_until,
+              j.started_at, j.stopped_at
          FROM jobs j
          ${where}
          ORDER BY j.scheduled_start NULLS LAST`,
@@ -65,8 +74,9 @@ jobsRouter.post(
       await client.query('BEGIN');
       const { rows } = await client.query(
         `INSERT INTO jobs (job_number, title, description, priority, site_address, site_location,
-                            geofence, geofence_radius_m, scheduled_start, scheduled_end, created_by, crew_id, status)
-         VALUES ($1,$2,$3,$4,$5, ST_GeogFromText($6), ST_GeogFromText($7), $8, $9, $10, $11, $12, 'scheduled')
+                            geofence, geofence_radius_m, scheduled_start, scheduled_end, created_by, crew_id, status,
+                            recurring_days_of_week, recurring_start_time, recurring_end_time, recurring_until)
+         VALUES ($1,$2,$3,$4,$5, ST_GeogFromText($6), ST_GeogFromText($7), $8, $9, $10, $11, $12, 'scheduled', $13, $14, $15, $16)
          RETURNING id`,
         [
           body.jobNumber,
@@ -81,6 +91,10 @@ jobsRouter.post(
           body.scheduledEnd ?? null,
           req.user!.id,
           body.crewId ?? null,
+          body.recurringDaysOfWeek ?? null,
+          body.recurringStartTime ?? null,
+          body.recurringEndTime ?? null,
+          body.recurringUntil ?? null,
         ],
       );
       const jobId = rows[0].id;
@@ -134,6 +148,35 @@ jobsRouter.post(
   }),
 );
 
+// Start/stop replace the old "Dispatch" workflow on the web portal — a job is either running
+// (status='in_progress', shown as "Active") or it isn't (shown as "Inactive"). Both timestamps are
+// tracked separately from dispatched_at, which is left alone for the existing Android/API dispatch flow.
+jobsRouter.post(
+  '/:jobId/start',
+  requireRole('admin', 'dispatcher'),
+  asyncHandler(async (req, res) => {
+    const { rows } = await pool.query(
+      `UPDATE jobs SET status = 'in_progress', started_at = now(), updated_at = now() WHERE id = $1 RETURNING id`,
+      [req.params.jobId],
+    );
+    if (!rows.length) throw new ApiError(404, 'job_not_found');
+    res.status(204).end();
+  }),
+);
+
+jobsRouter.post(
+  '/:jobId/stop',
+  requireRole('admin', 'dispatcher'),
+  asyncHandler(async (req, res) => {
+    const { rows } = await pool.query(
+      `UPDATE jobs SET status = 'scheduled', stopped_at = now(), updated_at = now() WHERE id = $1 RETURNING id`,
+      [req.params.jobId],
+    );
+    if (!rows.length) throw new ApiError(404, 'job_not_found');
+    res.status(204).end();
+  }),
+);
+
 jobsRouter.patch(
   '/:jobId',
   requireRole('admin', 'dispatcher'),
@@ -142,7 +185,7 @@ jobsRouter.patch(
       status: z.enum(['draft', 'scheduled', 'dispatched', 'in_progress', 'blocked', 'completed', 'closed', 'cancelled']).optional(),
       scheduledStart: z.string().datetime().optional(),
       scheduledEnd: z.string().datetime().optional(),
-      priority: z.enum(['low', 'normal', 'high', 'emergency']).optional(),
+      priority: z.enum(['low', 'medium', 'high', 'urgent']).optional(),
     });
     const body = schema.parse(req.body);
     const sets: string[] = [];
