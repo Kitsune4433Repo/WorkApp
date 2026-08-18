@@ -1,0 +1,106 @@
+import { FormEvent, useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { v4 as uuid } from 'uuid';
+import { api } from '../api/client';
+import { useAuth } from '../context/AuthContext';
+
+interface HaveRow {
+  material_id: string;
+  sku: string;
+  name: string;
+  unit: string;
+  quantity_have: number;
+}
+
+export function InventoryLedger() {
+  const { user } = useAuth();
+  const queryClient = useQueryClient();
+
+  const { data: have } = useQuery<HaveRow[]>({
+    queryKey: ['inventory', 'have', user?.id],
+    queryFn: async () => (await api.get(`/inventory/have/${user!.id}`)).data,
+    enabled: !!user,
+  });
+
+  const adjustMutation = useMutation({
+    mutationFn: (params: { materialId: string; delta: number }) =>
+      api.post('/inventory/have/adjust', {
+        materialId: params.materialId,
+        delta: params.delta,
+        clientTxnId: uuid(),
+        occurredAt: new Date().toISOString(),
+      }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['inventory', 'have', user?.id] }),
+  });
+
+  return (
+    <div className="space-y-8">
+      <div>
+        <h1 className="text-2xl font-bold text-slate-900">Material Ledger</h1>
+        <p className="text-sm text-slate-500">What you have on hand. Use +/- to adjust as material is used or restocked.</p>
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        {have?.map((row) => (
+          <div key={row.material_id} className="flex items-center justify-between rounded-lg border border-slate-200 bg-white p-4">
+            <div>
+              <div className="font-medium text-slate-900">{row.name}</div>
+              <div className="text-xs text-slate-500">{row.sku}</div>
+            </div>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => adjustMutation.mutate({ materialId: row.material_id, delta: -1 })}
+                className="h-8 w-8 rounded-full border border-slate-300 text-lg font-bold text-slate-600 hover:bg-slate-100"
+              >
+                −
+              </button>
+              <span className="w-10 text-center font-semibold">
+                {row.quantity_have} {row.unit}
+              </span>
+              <button
+                onClick={() => adjustMutation.mutate({ materialId: row.material_id, delta: 1 })}
+                className="h-8 w-8 rounded-full border border-slate-300 text-lg font-bold text-slate-600 hover:bg-slate-100"
+              >
+                +
+              </button>
+            </div>
+          </div>
+        ))}
+        {!have?.length && <p className="text-slate-400">No materials tracked yet.</p>}
+      </div>
+
+      <AddMaterialForm />
+    </div>
+  );
+}
+
+function AddMaterialForm() {
+  const queryClient = useQueryClient();
+  const [form, setForm] = useState({ sku: '', name: '', category: '', unit: 'ea' });
+
+  const createMutation = useMutation({
+    mutationFn: () => api.post('/inventory/catalog', form),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['inventory'] });
+      setForm({ sku: '', name: '', category: '', unit: 'ea' });
+    },
+  });
+
+  function onSubmit(e: FormEvent) {
+    e.preventDefault();
+    createMutation.mutate();
+  }
+
+  return (
+    <form onSubmit={onSubmit} className="grid grid-cols-2 gap-3 rounded-lg border border-slate-200 bg-white p-4 md:grid-cols-5">
+      <h2 className="col-span-full text-sm font-semibold text-slate-700">Add material to catalog</h2>
+      <input required placeholder="SKU" value={form.sku} onChange={(e) => setForm({ ...form, sku: e.target.value })} className="rounded-md border border-slate-300 px-3 py-2 text-sm" />
+      <input required placeholder="Name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="rounded-md border border-slate-300 px-3 py-2 text-sm" />
+      <input required placeholder="Category" value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} className="rounded-md border border-slate-300 px-3 py-2 text-sm" />
+      <input placeholder="Unit" value={form.unit} onChange={(e) => setForm({ ...form, unit: e.target.value })} className="rounded-md border border-slate-300 px-3 py-2 text-sm" />
+      <button type="submit" className="rounded-md bg-brand-600 px-3 py-2 text-sm font-medium text-white hover:bg-brand-700">
+        Add
+      </button>
+    </form>
+  );
+}

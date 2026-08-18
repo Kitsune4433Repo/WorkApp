@@ -1,0 +1,19 @@
+# Node
+node_modules/
+dist/
+build/
+.env
+*.log
+
+# Android / Gradle
+android/.gradle/
+android/local.properties
+android/*/build/
+android/**/build/
+android/.idea/
+android/*.iml
+*.jks
+*.keystore
+
+# OS
+.DS_Store
