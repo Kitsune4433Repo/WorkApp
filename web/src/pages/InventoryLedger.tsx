@@ -93,9 +93,9 @@ function MaterialRow({
   }
 
   return (
-    <div className="flex items-center justify-between rounded-lg border border-slate-200 bg-white p-4">
+    <div className="space-y-2 rounded-lg border border-slate-200 bg-white p-4">
       <div className="font-medium text-slate-900">{row.name}</div>
-      <div className="flex items-center gap-3">
+      <div className="flex flex-wrap items-center gap-3">
         <button
           onClick={() => onAdjust(-1)}
           className="h-8 w-8 rounded-full border border-slate-300 text-lg font-bold text-slate-600 hover:bg-slate-100"

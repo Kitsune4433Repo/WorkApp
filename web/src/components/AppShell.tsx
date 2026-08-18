@@ -31,7 +31,12 @@ export function AppShell({ children }: { children: ReactNode }) {
   return (
     <div className="flex min-h-screen flex-col md:flex-row">
       <aside className="flex shrink-0 flex-col border-b border-slate-200 bg-white p-4 md:h-screen md:w-56 md:border-b-0 md:border-r">
-        <div className="mb-6 text-lg font-bold text-brand-700">Crew Ops</div>
+        <div className="mb-4 flex items-center justify-between md:mb-6">
+          <div className="text-lg font-bold text-brand-700">Crew Hub</div>
+          <button onClick={logout} className="text-sm text-brand-600 hover:underline md:hidden">
+            Sign out
+          </button>
+        </div>
         <nav className="flex flex-row gap-1 overflow-x-auto md:flex-col md:overflow-visible">
           {NAV.map((item) => (
             <NavLink

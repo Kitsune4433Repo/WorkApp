@@ -77,7 +77,7 @@ private fun AuthenticatedNavHost(onLogout: () -> Unit) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Crew Ops") },
+                title = { Text("Crew Hub") },
                 actions = {
                     IconButton(onClick = onLogout) {
                         Icon(Icons.Filled.Logout, contentDescription = "Sign out")

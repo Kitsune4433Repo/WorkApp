@@ -58,14 +58,14 @@ export function ChatPage() {
   }
 
   return (
-    <div className="flex h-[calc(100vh-6rem)] gap-4">
-      <aside className="flex w-56 shrink-0 flex-col overflow-y-auto rounded-lg border border-slate-200 bg-white">
-        <div className="flex-1 overflow-y-auto">
+    <div className="flex h-[80vh] flex-col gap-4 md:h-[calc(100vh-6rem)] md:flex-row">
+      <aside className="flex max-h-40 shrink-0 flex-col overflow-y-auto rounded-lg border border-slate-200 bg-white md:h-full md:max-h-none md:w-56">
+        <div className="flex overflow-x-auto md:flex-1 md:flex-col md:overflow-y-auto md:overflow-x-visible">
           {channels?.map((c) => (
             <button
               key={c.id}
               onClick={() => setActiveChannelId(c.id)}
-              className={`block w-full border-b border-slate-100 px-4 py-3 text-left text-sm ${activeChannelId === c.id ? 'bg-brand-50 font-medium text-brand-700' : 'hover:bg-slate-50'}`}
+              className={`shrink-0 whitespace-nowrap border-b border-slate-100 px-4 py-3 text-left text-sm md:block md:w-full md:whitespace-normal ${activeChannelId === c.id ? 'bg-brand-50 font-medium text-brand-700' : 'hover:bg-slate-50'}`}
             >
               {c.name ?? `${c.type} channel`}
             </button>

@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { v4 as uuid } from 'uuid';
 import { api } from '../api/client';
 import { useAuth } from '../context/AuthContext';
+import { formatClockTime, formatDateTime } from '../utils/time';
 
 interface ActiveTimecard {
   id: string;
@@ -87,7 +88,7 @@ export function TimecardsPage() {
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div>
               <div className="text-sm font-medium text-slate-700">{user?.fullName}</div>
-              <div className="text-sm text-slate-500">Clocked in at {new Date(active.clock_in_at).toLocaleTimeString()}</div>
+              <div className="text-sm text-slate-500">Clocked in at {formatClockTime(active.clock_in_at)}</div>
               <div className="text-3xl font-bold text-brand-700">${(active.liveEarningsCents / 100).toFixed(2)}</div>
               <div className="text-sm text-slate-500">{Math.floor(active.liveActiveMinutes / 60)}h {active.liveActiveMinutes % 60}m active{active.onBreak ? ' (on break)' : ''}</div>
             </div>
@@ -112,8 +113,8 @@ export function TimecardsPage() {
                 {tc.tamper_flag && <span className="rounded bg-red-100 px-2 py-0.5 text-xs text-red-700">flagged</span>}
               </div>
               <div className="mt-2 space-y-1 text-sm text-slate-600">
-                <div>In: {new Date(tc.clock_in_at).toLocaleString()}</div>
-                <div>Out: {tc.clock_out_at ? new Date(tc.clock_out_at).toLocaleString() : 'still clocked in'}</div>
+                <div>In: {formatDateTime(tc.clock_in_at)}</div>
+                <div>Out: {tc.clock_out_at ? formatDateTime(tc.clock_out_at) : 'still clocked in'}</div>
               </div>
               <div className="mt-3 flex items-center justify-between">
                 <span className="text-sm text-slate-500">{tc.total_minutes != null ? `${(tc.total_minutes / 60).toFixed(2)}h` : '—'}</span>

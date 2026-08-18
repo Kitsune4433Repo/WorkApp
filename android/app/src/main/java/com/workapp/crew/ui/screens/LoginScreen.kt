@@ -56,7 +56,7 @@ fun LoginScreen(viewModel: LoginViewModel = hiltViewModel(), onLoggedIn: () -> U
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
-        Text("Crew Ops", style = MaterialTheme.typography.headlineMedium)
+        Text("Crew Hub", style = MaterialTheme.typography.headlineMedium)
         Spacer(Modifier.height(32.dp))
 
         OutlinedTextField(

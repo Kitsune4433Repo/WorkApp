@@ -1,4 +1,4 @@
-# WorkApp — Telecommunications Crew Management System
+# Crew Hub — Telecommunications Crew Management System
 
 [![CI](https://github.com/Kitsune4433Repo/WorkApp/actions/workflows/ci.yml/badge.svg)](https://github.com/Kitsune4433Repo/WorkApp/actions/workflows/ci.yml)
 

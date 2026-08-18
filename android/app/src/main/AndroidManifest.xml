@@ -15,7 +15,7 @@
         android:name=".CrewApplication"
         android:allowBackup="false"
         android:icon="@mipmap/ic_launcher"
-        android:label="Crew Ops"
+        android:label="Crew Hub"
         android:theme="@style/Theme.CrewManagement"
         android:networkSecurityConfig="@xml/network_security_config">
 

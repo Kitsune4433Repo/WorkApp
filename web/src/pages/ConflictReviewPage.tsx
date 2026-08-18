@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api/client';
+import { formatDateTime } from '../utils/time';
 
 interface SyncConflict {
   id: string;
@@ -77,7 +78,7 @@ export function ConflictReviewPage() {
               <div>
                 <span className="rounded-full bg-amber-100 px-2 py-1 text-xs font-medium text-amber-700">{conflict.entity_type}</span>
                 <span className="ml-2 text-xs text-slate-400">
-                  entity {conflict.entity_id.slice(0, 8)} · device {conflict.device_id} · {new Date(conflict.created_at).toLocaleString()}
+                  entity {conflict.entity_id.slice(0, 8)} · device {conflict.device_id} · {formatDateTime(conflict.created_at)}
                 </span>
               </div>
               <div className="flex gap-2">

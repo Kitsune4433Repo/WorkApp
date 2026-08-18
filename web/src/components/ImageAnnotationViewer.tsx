@@ -160,10 +160,10 @@ export function ImageAnnotationViewer({ documentId, documentVersion, title, imag
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-black/80 p-4">
-      <div className="flex items-center justify-between rounded-t-lg bg-white px-4 py-3">
+    <div className="fixed inset-0 z-50 flex flex-col bg-black/80 p-2 md:p-4">
+      <div className="flex flex-wrap items-center justify-between gap-2 rounded-t-lg bg-white px-3 py-3 md:px-4">
         <div className="font-semibold text-slate-900">{title}</div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <button
             onClick={() => setTool('pen')}
             className={`rounded-md px-3 py-1.5 text-sm font-medium ${tool === 'pen' ? 'bg-brand-600 text-white' : 'border border-slate-300 text-slate-600'}`}

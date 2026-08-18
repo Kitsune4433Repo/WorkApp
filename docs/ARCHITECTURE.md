@@ -1,4 +1,4 @@
-# Telecommunications Crew Management System — Architecture
+# Crew Hub — Architecture
 
 ## Topology
 

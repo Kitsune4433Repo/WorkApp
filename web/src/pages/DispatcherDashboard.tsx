@@ -4,6 +4,8 @@ import { api } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import { GeofenceMapPicker, LatLng } from '../components/GeofenceMapPicker';
 import { JobsMap } from '../components/JobsMap';
+import { TimePicker } from '../components/TimePicker';
+import { formatDateTime, formatTimeOfDay } from '../utils/time';
 
 interface Job {
   id: string;
@@ -37,7 +39,7 @@ const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 function formatRecurrence(job: Job): string | null {
   if (!job.recurring_days_of_week?.length) return null;
   const days = [...job.recurring_days_of_week].sort().map((d) => DAY_LABELS[d]).join(', ');
-  const time = job.recurring_start_time ? ` at ${job.recurring_start_time}` : '';
+  const time = job.recurring_start_time ? ` at ${formatTimeOfDay(job.recurring_start_time)}` : '';
   return `Recurs: ${days}${time}`;
 }
 
@@ -177,7 +179,7 @@ export function DispatcherDashboard() {
                       </span>
                     </td>
                     <td className="px-4 py-3">
-                      {recurrence ?? (job.scheduled_start ? new Date(job.scheduled_start).toLocaleString() : '—')}
+                      {recurrence ?? (job.scheduled_start ? formatDateTime(job.scheduled_start) : '—')}
                     </td>
                     {canDispatch && (
                       <td className="px-4 py-3 text-right space-x-2">
@@ -272,14 +274,14 @@ function JobScheduleEditor({ job, onDone }: { job: Job; onDone: () => void }) {
       </p>
       <DayPicker days={days} onToggle={toggleDay} />
       {days.length > 0 && (
-        <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3">
           <div>
             <label className="text-xs text-slate-500">Start time</label>
-            <input type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+            <TimePicker value={startTime} onChange={setStartTime} className="mt-1" />
           </div>
           <div>
             <label className="text-xs text-slate-500">End time</label>
-            <input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+            <TimePicker value={endTime} onChange={setEndTime} className="mt-1" />
           </div>
           <div>
             <label className="text-xs text-slate-500">Repeat until (optional)</label>
@@ -334,7 +336,8 @@ function CreateJobForm({
     title: '',
     description: '',
     priority: 'medium' as (typeof PRIORITIES)[number],
-    scheduledStart: '',
+    scheduledDate: '',
+    scheduledTime: '',
     recurringStartTime: '',
     recurringEndTime: '',
     recurringUntil: '',
@@ -357,7 +360,7 @@ function CreateJobForm({
         siteLocation,
         geofenceRadiusM: Number(geofenceRadiusM),
         geofencePolygon: polygon.length >= 3 ? polygon : undefined,
-        scheduledStart: form.scheduledStart ? new Date(form.scheduledStart).toISOString() : undefined,
+        scheduledStart: form.scheduledDate ? new Date(`${form.scheduledDate}T${form.scheduledTime || '00:00'}`).toISOString() : undefined,
         recurringDaysOfWeek: recurringDays.length ? recurringDays : undefined,
         recurringStartTime: recurringDays.length && form.recurringStartTime ? form.recurringStartTime : undefined,
         recurringEndTime: recurringDays.length && form.recurringEndTime ? form.recurringEndTime : undefined,
@@ -372,7 +375,8 @@ function CreateJobForm({
         title: '',
         description: '',
         priority: 'medium',
-        scheduledStart: '',
+        scheduledDate: '',
+        scheduledTime: '',
         recurringStartTime: '',
         recurringEndTime: '',
         recurringUntil: '',
@@ -410,6 +414,16 @@ function CreateJobForm({
           rows={2}
           className="rounded-md border border-slate-300 px-3 py-2 text-sm md:col-span-4"
         />
+        <div className="flex flex-wrap items-center gap-2 md:col-span-4">
+          <label className="text-sm text-slate-600">One-time date (leave blank if only setting a weekly schedule below)</label>
+          <input
+            type="date"
+            value={form.scheduledDate}
+            onChange={(e) => setForm({ ...form, scheduledDate: e.target.value })}
+            className="rounded-md border border-slate-300 px-3 py-2 text-sm"
+          />
+          {form.scheduledDate && <TimePicker value={form.scheduledTime} onChange={(scheduledTime) => setForm({ ...form, scheduledTime })} />}
+        </div>
       </div>
 
       <div className="flex items-center gap-2">
@@ -444,24 +458,14 @@ function CreateJobForm({
         </p>
         <DayPicker days={recurringDays} onToggle={toggleDay} />
         {recurringDays.length > 0 && (
-          <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3">
             <div>
               <label className="text-xs text-slate-500">Start time</label>
-              <input
-                type="time"
-                value={form.recurringStartTime}
-                onChange={(e) => setForm({ ...form, recurringStartTime: e.target.value })}
-                className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-              />
+              <TimePicker value={form.recurringStartTime} onChange={(recurringStartTime) => setForm({ ...form, recurringStartTime })} className="mt-1" />
             </div>
             <div>
               <label className="text-xs text-slate-500">End time</label>
-              <input
-                type="time"
-                value={form.recurringEndTime}
-                onChange={(e) => setForm({ ...form, recurringEndTime: e.target.value })}
-                className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-              />
+              <TimePicker value={form.recurringEndTime} onChange={(recurringEndTime) => setForm({ ...form, recurringEndTime })} className="mt-1" />
             </div>
             <div>
               <label className="text-xs text-slate-500">Repeat until (optional)</label>

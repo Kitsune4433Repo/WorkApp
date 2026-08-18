@@ -24,7 +24,7 @@ class CrewFirebaseMessagingService : FirebaseMessagingService() {
 
     override fun onMessageReceived(message: RemoteMessage) {
         val type = message.data["type"]
-        showNotification(message.notification?.title ?: "Crew Ops", message.notification?.body ?: "")
+        showNotification(message.notification?.title ?: "Crew Hub", message.notification?.body ?: "")
 
         // A dispatch or chat push means fresher server state exists; kick an immediate pull sync
         // rather than waiting for the 15-minute periodic worker.

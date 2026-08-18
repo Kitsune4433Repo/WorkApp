@@ -63,6 +63,32 @@ function RecenterOnPick({ location }: { location: LatLng | null }) {
   return null;
 }
 
+/** Manual recenter — after a dispatcher pans/zooms away, this snaps back to the site being edited
+ * (while picking a new job's location) or refits every existing job pin, without needing to reload
+ * the page. */
+function RecenterButton({ jobs, siteLocation }: { jobs: MapJob[]; siteLocation?: LatLng | null }) {
+  const map = useMap();
+  function recenter() {
+    if (siteLocation) {
+      map.setView(siteLocation, 17);
+      return;
+    }
+    const located = jobs.filter((j): j is MapJob & { lat: number; lng: number } => j.lat != null && j.lng != null);
+    if (located.length === 1) map.setView([located[0].lat, located[0].lng], 13);
+    else if (located.length > 1) map.fitBounds(located.map((j) => [j.lat, j.lng] as [number, number]), { padding: [30, 30] });
+    else map.setView(DEFAULT_CENTER, 11);
+  }
+  return (
+    <button
+      type="button"
+      onClick={recenter}
+      className="absolute right-2 top-2 z-[1000] rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 shadow hover:bg-slate-50"
+    >
+      Center map
+    </button>
+  );
+}
+
 function ClickHandler({ onPick }: { onPick: (p: LatLng) => void }) {
   useMapEvents({
     click(e) {
@@ -101,6 +127,7 @@ export function JobsMap({ jobs, picker }: { jobs: MapJob[]; picker?: MapPicker }
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
         <FitToMarkers jobs={located} />
+        <RecenterButton jobs={located} siteLocation={picker?.siteLocation} />
         {located.map((job) => {
           const polygon = geofenceToLatLngs(job.geofence_geojson);
           return (
