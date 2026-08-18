@@ -41,7 +41,16 @@ function formatMoney(cents: number): string {
   return `$${(cents / 100).toFixed(2)}`;
 }
 
-function PeopleTable({ people, totalWageCents }: { people: PersonTotals[]; totalWageCents: number }) {
+function PeopleTable({
+  people,
+  totalWageCents,
+  onDeletePerson,
+}: {
+  people: PersonTotals[];
+  totalWageCents: number;
+  onDeletePerson?: (p: PersonTotals) => void;
+}) {
+  const columnCount = onDeletePerson ? 5 : 4;
   return (
     <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
       <table className="min-w-full divide-y divide-slate-200 text-sm">
@@ -51,6 +60,7 @@ function PeopleTable({ people, totalWageCents }: { people: PersonTotals[]; total
             <th className="px-4 py-3">Days worked</th>
             <th className="px-4 py-3">Hours</th>
             <th className="px-4 py-3">Earnings</th>
+            {onDeletePerson && <th className="px-4 py-3" />}
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-100">
@@ -60,11 +70,23 @@ function PeopleTable({ people, totalWageCents }: { people: PersonTotals[]; total
               <td className="px-4 py-3">{p.days_worked}</td>
               <td className="px-4 py-3">{formatHours(p.total_minutes)}</td>
               <td className="px-4 py-3">{formatMoney(p.earnings_cents)}</td>
+              {onDeletePerson && (
+                <td className="px-4 py-3 text-right">
+                  {p.user_id && (
+                    <button
+                      onClick={() => onDeletePerson(p)}
+                      className="rounded-md border border-red-300 px-2 py-1 text-xs font-medium text-red-600 hover:bg-red-50"
+                    >
+                      Delete
+                    </button>
+                  )}
+                </td>
+              )}
             </tr>
           ))}
           {!people.length && (
             <tr>
-              <td colSpan={4} className="px-4 py-8 text-center text-slate-400">
+              <td colSpan={columnCount} className="px-4 py-8 text-center text-slate-400">
                 No completed shifts yet this period.
               </td>
             </tr>
@@ -72,7 +94,7 @@ function PeopleTable({ people, totalWageCents }: { people: PersonTotals[]; total
         </tbody>
         <tfoot>
           <tr className="border-t-2 border-slate-300 bg-slate-50 font-semibold">
-            <td className="px-4 py-3" colSpan={3}>
+            <td className="px-4 py-3" colSpan={columnCount - 1}>
               Total wage cost
             </td>
             <td className="px-4 py-3">{formatMoney(totalWageCents)}</td>
@@ -123,6 +145,21 @@ export function PayrollSummaryPage() {
     }
   }
 
+  // Clears a person's entry from the current in-progress week — it isn't archived yet, so this
+  // deletes their underlying timecards for the week rather than a payroll_periods row.
+  const deleteCurrentEntryMutation = useMutation({
+    mutationFn: (userId: string) => api.delete(`/timecards/weekly-summary/${userId}`),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['timecards', 'weekly-summary'] }),
+  });
+
+  function onDeleteCurrentEntry(p: PersonTotals) {
+    if (!p.user_id) return;
+    const name = p.full_name ?? p.user_full_name_snapshot;
+    if (window.confirm(`Delete ${name}'s timecards for this week? This cannot be undone.`)) {
+      deleteCurrentEntryMutation.mutate(p.user_id);
+    }
+  }
+
   return (
     <div className="space-y-8">
       <div>
@@ -134,7 +171,13 @@ export function PayrollSummaryPage() {
 
       <div>
         <h2 className="mb-2 text-lg font-semibold text-slate-800">This week{current ? ` — ${current.label}` : ''}</h2>
-        {current && <PeopleTable people={current.people} totalWageCents={current.totalWageCents} />}
+        {current && (
+          <PeopleTable
+            people={current.people}
+            totalWageCents={current.totalWageCents}
+            onDeletePerson={user?.role === 'admin' ? onDeleteCurrentEntry : undefined}
+          />
+        )}
       </div>
 
       <div>

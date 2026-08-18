@@ -208,6 +208,22 @@ timecardsRouter.get(
   }),
 );
 
+// Clears a person's entry from the current, still-in-progress week (which isn't in payroll_periods
+// yet — it's computed live from timecards) by deleting their timecards within this week's range.
+timecardsRouter.delete(
+  '/weekly-summary/:userId',
+  requireRole('admin'),
+  asyncHandler(async (req, res) => {
+    const period = getPayrollPeriodContaining();
+    await pool.query(`DELETE FROM timecards WHERE user_id = $1 AND clock_in_at >= $2 AND clock_in_at < $3`, [
+      req.params.userId,
+      period.start.toISOString(),
+      period.end.toISOString(),
+    ]);
+    res.status(204).end();
+  }),
+);
+
 timecardsRouter.get(
   '/payroll-periods',
   requireRole(...PAYROLL_VIEW_ROLES),

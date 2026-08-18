@@ -1,5 +1,5 @@
 import { NavLink } from 'react-router-dom';
-import { ReactNode, useState } from 'react';
+import { ReactNode, useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../api/client';
@@ -58,6 +58,18 @@ function NavSections({ sections, onNavigate }: { sections: NavSection[]; onNavig
 export function AppShell({ children }: { children: ReactNode }) {
   const { user, logout } = useAuth();
   const [menuOpen, setMenuOpen] = useState(false);
+
+  // Lock background scroll while the mobile drawer is open, so the page underneath can't move
+  // (and repaint stale) behind the fixed overlay.
+  useEffect(() => {
+    if (!menuOpen) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [menuOpen]);
+
   const canReviewConflicts = !!user && CONFLICT_REVIEW_ROLES.includes(user.role);
   const canViewPayroll = !!user && PAYROLL_VIEW_ROLES.includes(user.role);
 
@@ -159,7 +171,10 @@ export function AppShell({ children }: { children: ReactNode }) {
         </div>
       </aside>
 
-      <main className="flex-1 overflow-y-auto p-4 md:p-8">{children}</main>
+      {/* relative + z-0 contains descendants' z-index (e.g. Leaflet's map panes, which use z-index up
+          to 700 internally) inside this stacking context, so they can never paint above the z-50
+          mobile drawer/backdrop even though 700 > 50 in absolute terms. */}
+      <main className="relative z-0 flex-1 overflow-y-auto p-4 md:p-8">{children}</main>
     </div>
   );
 }
