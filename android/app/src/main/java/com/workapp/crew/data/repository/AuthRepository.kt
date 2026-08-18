@@ -16,6 +16,7 @@ sealed class LoginResult {
 class AuthRepository @Inject constructor(
     private val api: ApiService,
     private val tokenStore: AuthTokenStore,
+    private val pushRegistrationRepository: PushRegistrationRepository,
 ) {
     val isLoggedIn: StateFlow<Boolean> = tokenStore.isLoggedIn
 
@@ -27,6 +28,9 @@ class AuthRepository @Inject constructor(
     suspend fun login(email: String, password: String): LoginResult = try {
         val tokens = api.login(LoginRequest(email, password))
         tokenStore.saveSession(tokens)
+        // Best-effort — a fresh install's FCM token is usually already available by login time,
+        // and onNewToken alone wouldn't cover "same device, different user logs in".
+        pushRegistrationRepository.registerCurrentToken()
         LoginResult.Success
     } catch (e: retrofit2.HttpException) {
         val message = if (e.code() == 401) "Incorrect email or password." else "Sign-in failed (${e.code()}). Try again."

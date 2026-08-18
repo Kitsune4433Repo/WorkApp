@@ -59,6 +59,8 @@ data class DocumentsPullResponse(val entityType: String, val since: String, val 
 
 data class DocumentDownloadUrlResponse(val url: String)
 
+data class RegisterDeviceRequest(val deviceId: String, val pushToken: String, val platform: String)
+
 data class ChatChannelDto(val id: String, val type: String, val name: String?, val job_id: String?)
 data class CreateChannelRequest(val type: String, val name: String?, val jobId: String?, val memberUserIds: List<String>)
 data class CreateChannelResponse(val id: String)
@@ -123,6 +125,9 @@ interface ApiService {
 
     @GET("documents/{documentId}/download")
     suspend fun getDocumentDownloadUrl(@Path("documentId") documentId: String): DocumentDownloadUrlResponse
+
+    @POST("users/devices")
+    suspend fun registerDevice(@Body body: RegisterDeviceRequest)
 
     @GET("chat/channels")
     suspend fun getChatChannels(): List<ChatChannelDto>

@@ -1,6 +1,8 @@
 import { NavLink } from 'react-router-dom';
 import { ReactNode } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../context/AuthContext';
+import { api } from '../api/client';
 
 const NAV = [
   { to: '/', label: 'Dispatch' },
@@ -11,8 +13,18 @@ const NAV = [
   { to: '/knowledge-base', label: 'Knowledge Base' },
 ];
 
+const CONFLICT_REVIEW_ROLES = ['admin', 'dispatcher'];
+
 export function AppShell({ children }: { children: ReactNode }) {
   const { user, logout } = useAuth();
+  const canReviewConflicts = !!user && CONFLICT_REVIEW_ROLES.includes(user.role);
+
+  const { data: pendingConflicts } = useQuery<unknown[]>({
+    queryKey: ['sync-conflicts'],
+    queryFn: async () => (await api.get('/sync/conflicts')).data,
+    enabled: canReviewConflicts,
+    refetchInterval: 30_000,
+  });
 
   return (
     <div className="flex min-h-screen flex-col md:flex-row">
@@ -33,6 +45,23 @@ export function AppShell({ children }: { children: ReactNode }) {
               {item.label}
             </NavLink>
           ))}
+          {canReviewConflicts && (
+            <NavLink
+              to="/conflicts"
+              className={({ isActive }) =>
+                `flex items-center justify-between whitespace-nowrap rounded-md px-3 py-2 text-sm font-medium ${
+                  isActive ? 'bg-brand-50 text-brand-700' : 'text-slate-600 hover:bg-slate-100'
+                }`
+              }
+            >
+              <span>Conflicts</span>
+              {!!pendingConflicts?.length && (
+                <span className="ml-2 rounded-full bg-amber-500 px-1.5 py-0.5 text-xs font-semibold text-white">
+                  {pendingConflicts.length}
+                </span>
+              )}
+            </NavLink>
+          )}
         </nav>
         <div className="mt-auto hidden pt-6 text-xs text-slate-500 md:block">
           <div className="font-medium text-slate-700">{user?.fullName}</div>

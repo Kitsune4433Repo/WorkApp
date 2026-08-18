@@ -8,10 +8,16 @@ import { TimecardsPage } from './pages/TimecardsPage';
 import { ChatPage } from './pages/ChatPage';
 import { UploadCenter } from './pages/UploadCenter';
 import { KnowledgeBasePage } from './pages/KnowledgeBasePage';
+import { ConflictReviewPage } from './pages/ConflictReviewPage';
 
 function RequireAuth({ children }: { children: JSX.Element }) {
   const { user } = useAuth();
   return user ? children : <Navigate to="/login" replace />;
+}
+
+function RequireRole({ roles, children }: { roles: string[]; children: JSX.Element }) {
+  const { user } = useAuth();
+  return user && roles.includes(user.role) ? children : <Navigate to="/" replace />;
 }
 
 export default function App() {
@@ -30,6 +36,14 @@ export default function App() {
                 <Route path="/chat" element={<ChatPage />} />
                 <Route path="/uploads" element={<UploadCenter />} />
                 <Route path="/knowledge-base" element={<KnowledgeBasePage />} />
+                <Route
+                  path="/conflicts"
+                  element={
+                    <RequireRole roles={['admin', 'dispatcher']}>
+                      <ConflictReviewPage />
+                    </RequireRole>
+                  }
+                />
               </Routes>
             </AppShell>
           </RequireAuth>

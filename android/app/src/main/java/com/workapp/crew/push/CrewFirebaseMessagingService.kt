@@ -8,6 +8,7 @@ import com.google.firebase.messaging.FirebaseMessagingService
 import com.google.firebase.messaging.RemoteMessage
 import com.workapp.crew.R
 import com.workapp.crew.data.remote.ApiService
+import com.workapp.crew.data.repository.PushRegistrationRepository
 import com.workapp.crew.sync.SyncWorker
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.*
@@ -18,6 +19,7 @@ import javax.inject.Inject
 class CrewFirebaseMessagingService : FirebaseMessagingService() {
 
     @Inject lateinit var api: ApiService
+    @Inject lateinit var pushRegistrationRepository: PushRegistrationRepository
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     override fun onMessageReceived(message: RemoteMessage) {
@@ -32,10 +34,7 @@ class CrewFirebaseMessagingService : FirebaseMessagingService() {
     }
 
     override fun onNewToken(token: String) {
-        scope.launch {
-            // Registration is fire-and-forget here; production code would retry via the outbox
-            // like every other write in this app.
-        }
+        scope.launch { pushRegistrationRepository.registerToken(token) }
     }
 
     private fun showNotification(title: String, body: String) {
