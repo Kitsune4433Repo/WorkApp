@@ -9,6 +9,7 @@ import { ChatPage } from './pages/ChatPage';
 import { UploadCenter } from './pages/UploadCenter';
 import { ConflictReviewPage } from './pages/ConflictReviewPage';
 import { UserManagementPage } from './pages/UserManagementPage';
+import { PayrollSummaryPage } from './pages/PayrollSummaryPage';
 
 function RequireAuth({ children }: { children: JSX.Element }) {
   const { user } = useAuth();
@@ -35,6 +36,14 @@ export default function App() {
                 <Route path="/timecards" element={<TimecardsPage />} />
                 <Route path="/chat" element={<ChatPage />} />
                 <Route path="/uploads" element={<UploadCenter />} />
+                <Route
+                  path="/payroll"
+                  element={
+                    <RequireRole roles={['admin', 'dispatcher', 'crew_lead']}>
+                      <PayrollSummaryPage />
+                    </RequireRole>
+                  }
+                />
                 <Route
                   path="/conflicts"
                   element={

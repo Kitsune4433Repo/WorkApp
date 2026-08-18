@@ -12,6 +12,18 @@ interface ActiveTimecard {
   liveEarningsCents: number;
 }
 
+interface TimecardEntry {
+  id: string;
+  full_name: string;
+  clock_in_at: string;
+  clock_out_at: string | null;
+  total_minutes: number | null;
+  earnings_cents: number | null;
+  tamper_flag: boolean;
+  clock_in_in_geofence: boolean | null;
+  clock_out_in_geofence: boolean | null;
+}
+
 function useGeolocation() {
   const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
   useEffect(() => {
@@ -31,7 +43,7 @@ export function TimecardsPage() {
     refetchInterval: 15_000,
   });
 
-  const { data: history } = useQuery({
+  const { data: history } = useQuery<TimecardEntry[]>({
     queryKey: ['timecards', 'history', user?.id],
     queryFn: async () => (await api.get(`/timecards/history/${user!.id}`)).data,
     enabled: !!user,
@@ -51,6 +63,17 @@ export function TimecardsPage() {
     mutationFn: () => api.post('/timecards/clock-out', { location: coords ?? { lat: 0, lng: 0 }, deviceTime: new Date().toISOString() }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['timecards'] }),
   });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => api.delete(`/timecards/${id}`),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['timecards'] }),
+  });
+
+  function onDeleteEntry(tc: TimecardEntry) {
+    if (window.confirm(`Delete this ${tc.full_name} shift (${new Date(tc.clock_in_at).toLocaleDateString()})? This cannot be undone.`)) {
+      deleteMutation.mutate(tc.id);
+    }
+  }
 
   return (
     <div className="space-y-8">
@@ -79,32 +102,38 @@ export function TimecardsPage() {
         )}
       </div>
 
-      <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
-        <table className="min-w-full divide-y divide-slate-200 text-sm">
-          <thead className="bg-slate-50 text-left text-xs font-semibold uppercase text-slate-500">
-            <tr>
-              <th className="px-4 py-3">Clock in</th>
-              <th className="px-4 py-3">Clock out</th>
-              <th className="px-4 py-3">Hours</th>
-              <th className="px-4 py-3">Earnings</th>
-              <th className="px-4 py-3">Geofence</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100">
-            {history?.map((tc: any) => (
-              <tr key={tc.id}>
-                <td className="px-4 py-3">{new Date(tc.clock_in_at).toLocaleString()}</td>
-                <td className="px-4 py-3">{tc.clock_out_at ? new Date(tc.clock_out_at).toLocaleString() : '—'}</td>
-                <td className="px-4 py-3">{tc.total_minutes ? (tc.total_minutes / 60).toFixed(2) : '—'}</td>
-                <td className="px-4 py-3">{tc.earnings_cents != null ? `$${(tc.earnings_cents / 100).toFixed(2)}` : '—'}</td>
-                <td className="px-4 py-3">
-                  {tc.tamper_flag && <span className="mr-2 rounded bg-red-100 px-2 py-0.5 text-xs text-red-700">flagged</span>}
-                  {tc.clock_in_in_geofence === false ? 'outside' : tc.clock_in_in_geofence === true ? 'inside' : '—'}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      <div>
+        <h2 className="mb-2 text-lg font-semibold text-slate-800">History</h2>
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {history?.map((tc) => (
+            <div key={tc.id} className="rounded-lg border border-slate-200 bg-white p-4">
+              <div className="flex items-start justify-between">
+                <div className="font-medium text-slate-900">{tc.full_name}</div>
+                {tc.tamper_flag && <span className="rounded bg-red-100 px-2 py-0.5 text-xs text-red-700">flagged</span>}
+              </div>
+              <div className="mt-2 space-y-1 text-sm text-slate-600">
+                <div>In: {new Date(tc.clock_in_at).toLocaleString()}</div>
+                <div>Out: {tc.clock_out_at ? new Date(tc.clock_out_at).toLocaleString() : 'still clocked in'}</div>
+              </div>
+              <div className="mt-3 flex items-center justify-between">
+                <span className="text-sm text-slate-500">{tc.total_minutes != null ? `${(tc.total_minutes / 60).toFixed(2)}h` : '—'}</span>
+                <span className="text-lg font-semibold text-brand-700">
+                  {tc.earnings_cents != null ? `$${(tc.earnings_cents / 100).toFixed(2)}` : '—'}
+                </span>
+              </div>
+              {user?.role === 'admin' && (
+                <button
+                  onClick={() => onDeleteEntry(tc)}
+                  disabled={deleteMutation.isPending}
+                  className="mt-3 w-full rounded-md border border-red-300 px-2 py-1 text-xs font-medium text-red-600 hover:bg-red-50"
+                >
+                  Delete
+                </button>
+              )}
+            </div>
+          ))}
+          {!history?.length && <p className="text-slate-400">No shifts recorded yet.</p>}
+        </div>
       </div>
     </div>
   );

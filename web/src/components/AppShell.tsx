@@ -13,10 +13,12 @@ const NAV = [
 ];
 
 const CONFLICT_REVIEW_ROLES = ['admin', 'dispatcher'];
+const PAYROLL_VIEW_ROLES = ['admin', 'dispatcher', 'crew_lead'];
 
 export function AppShell({ children }: { children: ReactNode }) {
   const { user, logout } = useAuth();
   const canReviewConflicts = !!user && CONFLICT_REVIEW_ROLES.includes(user.role);
+  const canViewPayroll = !!user && PAYROLL_VIEW_ROLES.includes(user.role);
 
   const { data: pendingConflicts } = useQuery<unknown[]>({
     queryKey: ['sync-conflicts'],
@@ -44,6 +46,18 @@ export function AppShell({ children }: { children: ReactNode }) {
               {item.label}
             </NavLink>
           ))}
+          {canViewPayroll && (
+            <NavLink
+              to="/payroll"
+              className={({ isActive }) =>
+                `whitespace-nowrap rounded-md px-3 py-2 text-sm font-medium ${
+                  isActive ? 'bg-brand-50 text-brand-700' : 'text-slate-600 hover:bg-slate-100'
+                }`
+              }
+            >
+              Payroll
+            </NavLink>
+          )}
           {canReviewConflicts && (
             <NavLink
               to="/conflicts"

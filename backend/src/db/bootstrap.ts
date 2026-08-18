@@ -36,6 +36,7 @@ const INCREMENTAL_MIGRATIONS = [
   'database/migrations/002_documents_free_text_doctype.sql',
   'database/migrations/003_job_priority_recurrence_start_stop.sql',
   'database/migrations/004_users_hard_delete_set_null.sql',
+  'database/migrations/005_payroll_periods.sql',
 ];
 
 export async function applyIncrementalMigrations(): Promise<void> {

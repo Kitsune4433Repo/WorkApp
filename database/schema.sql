@@ -257,6 +257,31 @@ CREATE TABLE timecard_events (
 );
 CREATE INDEX idx_timecard_events_timecard ON timecard_events (timecard_id);
 
+-- Weekly payroll close-out (Thu-Wed periods, see backend/src/services/payrollPeriodService.ts).
+-- One row per finalized week, plus one entries row per person who worked that week, archived under
+-- a human date-range label like "August 13th-19th". user_id is nullable/SET NULL (not CASCADE) so a
+-- later account deletion doesn't erase payroll history — user_full_name_snapshot keeps the name.
+CREATE TABLE payroll_periods (
+    id                 UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    period_start       DATE NOT NULL UNIQUE, -- Thursday
+    period_end         DATE NOT NULL, -- Wednesday (inclusive)
+    label              TEXT NOT NULL, -- e.g. "August 13th-19th"
+    total_wage_cents   BIGINT NOT NULL,
+    finalized_at       TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE payroll_period_entries (
+    id                       UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    period_id                UUID NOT NULL REFERENCES payroll_periods(id) ON DELETE CASCADE,
+    user_id                  UUID REFERENCES users(id) ON DELETE SET NULL,
+    user_full_name_snapshot  TEXT NOT NULL,
+    days_worked              INTEGER NOT NULL,
+    total_minutes            INTEGER NOT NULL,
+    earnings_cents           BIGINT NOT NULL,
+    UNIQUE (period_id, user_id)
+);
+CREATE INDEX idx_payroll_period_entries_period ON payroll_period_entries (period_id);
+
 -- ============================================================================
 -- REAL-TIME MESSAGING
 -- ============================================================================

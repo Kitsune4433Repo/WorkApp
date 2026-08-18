@@ -1,10 +1,13 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { pool } from '../config/database';
-import { requireAuth } from '../middleware/auth';
+import { requireAuth, requireRole } from '../middleware/auth';
 import { asyncHandler, ApiError } from '../middleware/errorHandler';
 import { isPointInJobGeofence, toGeographyPoint, recordLocationPing } from '../services/geofenceService';
 import { detectTamper } from '../services/tamperDetectionService';
+import { getPayrollPeriodContaining, computePeriodTotals } from '../services/payrollPeriodService';
+
+const PAYROLL_VIEW_ROLES = ['admin', 'dispatcher', 'crew_lead'] as const;
 
 export const timecardsRouter = Router();
 timecardsRouter.use(requireAuth);
@@ -159,13 +162,79 @@ timecardsRouter.get(
 timecardsRouter.get(
   '/history/:userId',
   asyncHandler(async (req, res) => {
+    // Anyone can pull their own history; seeing someone else's requires an elevated role.
+    if (req.params.userId !== req.user!.id && !(PAYROLL_VIEW_ROLES as readonly string[]).includes(req.user!.role)) {
+      throw new ApiError(403, 'forbidden');
+    }
     const { rows } = await pool.query(
-      `SELECT id, job_id, clock_in_at, clock_out_at, total_minutes, earnings_cents, tamper_flag,
-              clock_in_in_geofence, clock_out_in_geofence
-         FROM timecards WHERE user_id = $1 ORDER BY clock_in_at DESC LIMIT 100`,
+      `SELECT t.id, t.job_id, t.clock_in_at, t.clock_out_at, t.total_minutes, t.earnings_cents, t.tamper_flag,
+              t.clock_in_in_geofence, t.clock_out_in_geofence, u.full_name
+         FROM timecards t JOIN users u ON u.id = t.user_id
+        WHERE t.user_id = $1 ORDER BY t.clock_in_at DESC LIMIT 100`,
       [req.params.userId],
     );
     res.json(rows);
+  }),
+);
+
+// Lets an admin clear out mistaken/test entries (own or anyone's) — hard delete, since a timecard
+// has no soft-delete concept and this is meant for cleaning up bad data, not an audit-preserving action.
+timecardsRouter.delete(
+  '/:id',
+  requireRole('admin'),
+  asyncHandler(async (req, res) => {
+    const { rows } = await pool.query(`DELETE FROM timecards WHERE id = $1 RETURNING id`, [req.params.id]);
+    if (!rows.length) throw new ApiError(404, 'timecard_not_found');
+    res.status(204).end();
+  }),
+);
+
+// Live totals for the payroll week currently in progress — days worked, hours, and earnings per
+// person, plus the total wage cost across everyone. Only counts completed (clocked-out) shifts, same
+// rule the Wednesday-11pm close-out uses, so this view and the archived one stay consistent.
+timecardsRouter.get(
+  '/weekly-summary',
+  requireRole(...PAYROLL_VIEW_ROLES),
+  asyncHandler(async (_req, res) => {
+    const period = getPayrollPeriodContaining();
+    const { people, totalWageCents } = await computePeriodTotals(period);
+    res.json({
+      periodStart: period.startYMD,
+      periodEnd: period.endYMD,
+      label: period.label,
+      people,
+      totalWageCents,
+    });
+  }),
+);
+
+timecardsRouter.get(
+  '/payroll-periods',
+  requireRole(...PAYROLL_VIEW_ROLES),
+  asyncHandler(async (_req, res) => {
+    const { rows } = await pool.query(
+      `SELECT id, period_start, period_end, label, total_wage_cents, finalized_at
+         FROM payroll_periods ORDER BY period_start DESC LIMIT 52`,
+    );
+    res.json(rows);
+  }),
+);
+
+timecardsRouter.get(
+  '/payroll-periods/:id',
+  requireRole(...PAYROLL_VIEW_ROLES),
+  asyncHandler(async (req, res) => {
+    const { rows: periodRows } = await pool.query(
+      `SELECT id, period_start, period_end, label, total_wage_cents, finalized_at FROM payroll_periods WHERE id = $1`,
+      [req.params.id],
+    );
+    if (!periodRows.length) throw new ApiError(404, 'payroll_period_not_found');
+    const { rows: entryRows } = await pool.query(
+      `SELECT user_id, user_full_name_snapshot, days_worked, total_minutes, earnings_cents
+         FROM payroll_period_entries WHERE period_id = $1 ORDER BY user_full_name_snapshot`,
+      [req.params.id],
+    );
+    res.json({ ...periodRows[0], people: entryRows });
   }),
 );
 

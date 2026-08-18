@@ -14,6 +14,20 @@ import { photoProofsRouter } from './routes/photoProofs';
 import { syncRouter } from './routes/sync';
 import { chatRouter } from './routes/chat';
 import { errorHandler, notFound } from './middleware/errorHandler';
+import { ensurePastPeriodsFinalized } from './services/payrollPeriodService';
+
+// Cheap opportunistic catch-up: at most once every 5 minutes of real traffic, check whether the
+// current payroll week's Wednesday-11pm close-out deadline has passed and archive it if so. This is
+// what makes the close-out actually happen if the free-tier dyno was asleep right at the deadline —
+// the next request to wake it (even just a health check) triggers the check. See
+// payrollPeriodService.ensurePastPeriodsFinalized for the idempotent finalize-and-walk-backward logic.
+let lastPayrollCheckAt = 0;
+function checkPayrollPeriodsOpportunistically() {
+  const now = Date.now();
+  if (now - lastPayrollCheckAt < 5 * 60 * 1000) return;
+  lastPayrollCheckAt = now;
+  ensurePastPeriodsFinalized().catch((err) => console.error('[payroll] opportunistic finalize check failed:', err));
+}
 
 export function createApp(options: { rateLimiterOptions?: Partial<RateLimitOptions> } = {}) {
   const app = express();
@@ -22,6 +36,10 @@ export function createApp(options: { rateLimiterOptions?: Partial<RateLimitOptio
   app.use(cors());
   app.use(express.json({ limit: '2mb' }));
   app.use(createApiRateLimiter(options.rateLimiterOptions));
+  app.use((_req, _res, next) => {
+    checkPayrollPeriodsOpportunistically();
+    next();
+  });
 
   app.get('/health', (_req, res) => res.json({ status: 'ok', time: new Date().toISOString() }));
 
