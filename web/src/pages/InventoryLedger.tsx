@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { v4 as uuid } from 'uuid';
 import { api } from '../api/client';
 import { useAuth } from '../context/AuthContext';
+import { QuantityStepper } from '../components/QuantityStepper';
 
 interface HaveRow {
   material_id: string;
@@ -81,47 +82,17 @@ function MaterialRow({
   onRemove?: () => void;
   removing: boolean;
 }) {
-  const [editValue, setEditValue] = useState<string | null>(null);
-
-  function commitEdit() {
-    if (editValue === null) return;
-    const next = Number(editValue);
-    setEditValue(null);
-    if (!Number.isFinite(next) || next < 0) return;
-    const delta = next - row.quantity_have;
-    if (delta !== 0) onAdjust(delta);
-  }
-
   return (
     <div className="space-y-2 rounded-lg border border-slate-200 bg-white p-4">
       <div className="font-medium text-slate-900">{row.name}</div>
       <div className="flex flex-wrap items-center gap-3">
-        <button
-          onClick={() => onAdjust(-1)}
-          className="h-8 w-8 rounded-full border border-slate-300 text-lg font-bold text-slate-600 hover:bg-slate-100"
-        >
-          −
-        </button>
-        <div className="flex items-center gap-1">
-          <input
-            type="number"
-            min={0}
-            value={editValue ?? Number(row.quantity_have)}
-            onChange={(e) => setEditValue(e.target.value)}
-            onBlur={commitEdit}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
-            }}
-            className="w-20 rounded-md border border-slate-300 px-2 py-1 text-center font-semibold"
-          />
-          <span className="text-sm text-slate-500">{row.unit}</span>
-        </div>
-        <button
-          onClick={() => onAdjust(1)}
-          className="h-8 w-8 rounded-full border border-slate-300 text-lg font-bold text-slate-600 hover:bg-slate-100"
-        >
-          +
-        </button>
+        <QuantityStepper
+          value={Number(row.quantity_have)}
+          unit={row.unit}
+          onDecrement={() => onAdjust(-1)}
+          onIncrement={() => onAdjust(1)}
+          onDirectEdit={(next) => onAdjust(next - Number(row.quantity_have))}
+        />
         {onRemove && (
           <button
             onClick={onRemove}

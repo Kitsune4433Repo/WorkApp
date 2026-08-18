@@ -32,7 +32,12 @@ documentsRouter.post(
     const body = createDocSchema.parse(req.body);
 
     const checksum = crypto.createHash('sha256').update(req.file.buffer).digest('hex');
-    const key = await uploadBuffer('documents', req.file.buffer, req.file.mimetype);
+    let key: string;
+    try {
+      key = await uploadBuffer('documents', req.file.buffer, req.file.mimetype);
+    } catch (err) {
+      throw new ApiError(502, 'upload_failed', { message: err instanceof Error ? err.message : String(err) });
+    }
 
     const doc = await withTransaction(async (client) => {
       const { rows } = await client.query(
@@ -61,7 +66,12 @@ documentsRouter.post(
     if (!req.file) throw new ApiError(400, 'file_required');
     const changeNote = (req.body.changeNote as string) ?? null;
     const checksum = crypto.createHash('sha256').update(req.file.buffer).digest('hex');
-    const key = await uploadBuffer('documents', req.file.buffer, req.file.mimetype);
+    let key: string;
+    try {
+      key = await uploadBuffer('documents', req.file.buffer, req.file.mimetype);
+    } catch (err) {
+      throw new ApiError(502, 'upload_failed', { message: err instanceof Error ? err.message : String(err) });
+    }
 
     const version = await withTransaction(async (client) => {
       const { rows: docRows } = await client.query(

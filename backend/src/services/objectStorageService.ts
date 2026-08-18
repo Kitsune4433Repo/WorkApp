@@ -32,9 +32,35 @@ const signingClient = new S3Client({
 
 const BUCKET = process.env.OBJECT_STORE_BUCKET ?? 'crew-management-assets';
 
+// Turns an opaque AWS SDK/network failure into a message an admin (not a developer with log
+// access) can actually act on — this is what the "Failed to upload" banner shows, so it's the only
+// diagnostic a live deploy without shell/log access has for "did I set the R2 vars up right?".
+function describeUploadFailure(err: unknown): string {
+  if (!process.env.OBJECT_STORE_ENDPOINT) {
+    return 'Object storage isn’t configured yet (OBJECT_STORE_ENDPOINT is unset) — set OBJECT_STORE_ENDPOINT/ACCESS_KEY/SECRET_KEY in your deploy’s environment variables.';
+  }
+  const name = (err as { name?: string })?.name ?? '';
+  const code = (err as { Code?: string })?.Code ?? (err as { code?: string })?.code ?? '';
+  const message = err instanceof Error ? err.message : String(err);
+  if (name === 'TimeoutError' || code === 'ETIMEDOUT' || code === 'ECONNREFUSED' || code === 'ENOTFOUND') {
+    return `Couldn’t reach the object storage endpoint (${process.env.OBJECT_STORE_ENDPOINT}) — check that OBJECT_STORE_ENDPOINT is correct and reachable.`;
+  }
+  if (code === 'InvalidAccessKeyId' || code === 'SignatureDoesNotMatch' || name === 'CredentialsProviderError') {
+    return 'Object storage rejected the credentials — check OBJECT_STORE_ACCESS_KEY/SECRET_KEY.';
+  }
+  if (code === 'NoSuchBucket') {
+    return `Bucket "${BUCKET}" doesn’t exist at that endpoint — check OBJECT_STORE_BUCKET and that the bucket was actually created.`;
+  }
+  return `Object storage upload failed: ${message}`;
+}
+
 export async function uploadBuffer(prefix: string, buffer: Buffer, contentType: string): Promise<string> {
   const key = `${prefix}/${randomUUID()}`;
-  await s3.send(new PutObjectCommand({ Bucket: BUCKET, Key: key, Body: buffer, ContentType: contentType }));
+  try {
+    await s3.send(new PutObjectCommand({ Bucket: BUCKET, Key: key, Body: buffer, ContentType: contentType }));
+  } catch (err) {
+    throw new Error(describeUploadFailure(err));
+  }
   return key;
 }
 

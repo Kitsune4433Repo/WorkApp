@@ -1,6 +1,7 @@
 import { FormEvent, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api/client';
+import { QuantityStepper } from '../components/QuantityStepper';
 
 interface RestockItem {
   id: string;
@@ -71,15 +72,6 @@ function RestockRow({
   onRemove: () => void;
   removing: boolean;
 }) {
-  const [editValue, setEditValue] = useState<string | null>(null);
-
-  function commitEdit() {
-    if (editValue === null) return;
-    const next = Number(editValue);
-    setEditValue(null);
-    if (Number.isFinite(next) && next >= 0 && next !== Number(item.quantity_needed)) onSetQuantity(next);
-  }
-
   return (
     <div className="rounded-lg border border-slate-200 bg-white p-4">
       <div className="flex items-start justify-between">
@@ -94,32 +86,13 @@ function RestockRow({
       </div>
       {item.note && <p className="mt-1 text-sm text-slate-500">{item.note}</p>}
       <div className="mt-3 flex items-center gap-3">
-        <button
-          onClick={() => onSetQuantity(Math.max(0, Number(item.quantity_needed) - 1))}
-          className="h-8 w-8 rounded-full border border-slate-300 text-lg font-bold text-slate-600 hover:bg-slate-100"
-        >
-          −
-        </button>
-        <div className="flex items-center gap-1">
-          <input
-            type="number"
-            min={0}
-            value={editValue ?? Number(item.quantity_needed)}
-            onChange={(e) => setEditValue(e.target.value)}
-            onBlur={commitEdit}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
-            }}
-            className="w-20 rounded-md border border-slate-300 px-2 py-1 text-center font-semibold"
-          />
-          <span className="text-sm text-slate-500">{item.unit}</span>
-        </div>
-        <button
-          onClick={() => onSetQuantity(Number(item.quantity_needed) + 1)}
-          className="h-8 w-8 rounded-full border border-slate-300 text-lg font-bold text-slate-600 hover:bg-slate-100"
-        >
-          +
-        </button>
+        <QuantityStepper
+          value={Number(item.quantity_needed)}
+          unit={item.unit}
+          onDecrement={() => onSetQuantity(Math.max(0, Number(item.quantity_needed) - 1))}
+          onIncrement={() => onSetQuantity(Number(item.quantity_needed) + 1)}
+          onDirectEdit={onSetQuantity}
+        />
       </div>
     </div>
   );

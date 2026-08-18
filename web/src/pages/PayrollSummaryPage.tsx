@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api/client';
+import { useAuth } from '../context/AuthContext';
 
 interface PersonTotals {
   user_id: string | null;
@@ -87,6 +88,8 @@ function PeopleTable({ people, totalWageCents }: { people: PersonTotals[]; total
  * automatically closed out and filed under its date-range label (e.g. "August 13th-19th") at
  * Wednesday 11pm, see backend/src/services/payrollPeriodService.ts. */
 export function PayrollSummaryPage() {
+  const { user } = useAuth();
+  const queryClient = useQueryClient();
   const [selectedPeriodId, setSelectedPeriodId] = useState<string | null>(null);
 
   const { data: current } = useQuery<WeeklySummary>({
@@ -105,6 +108,20 @@ export function PayrollSummaryPage() {
     queryFn: async () => (await api.get(`/timecards/payroll-periods/${selectedPeriodId}`)).data,
     enabled: !!selectedPeriodId,
   });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => api.delete(`/timecards/payroll-periods/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['timecards', 'payroll-periods'] });
+      setSelectedPeriodId(null);
+    },
+  });
+
+  function onDeletePeriod(p: ArchivedPeriod) {
+    if (window.confirm(`Delete the archived "${p.label}" payroll week? This cannot be undone.`)) {
+      deleteMutation.mutate(p.id);
+    }
+  }
 
   return (
     <div className="space-y-8">
@@ -138,8 +155,17 @@ export function PayrollSummaryPage() {
         </div>
 
         {selectedPeriod && (
-          <div className="mt-4">
+          <div className="mt-4 space-y-2">
             <PeopleTable people={selectedPeriod.people} totalWageCents={selectedPeriod.total_wage_cents} />
+            {user?.role === 'admin' && (
+              <button
+                onClick={() => onDeletePeriod(selectedPeriod)}
+                disabled={deleteMutation.isPending}
+                className="rounded-md border border-red-300 px-3 py-1.5 text-sm font-medium text-red-600 hover:bg-red-50"
+              >
+                Delete this archived week
+              </button>
+            )}
           </div>
         )}
       </div>

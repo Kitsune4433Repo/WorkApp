@@ -238,6 +238,20 @@ timecardsRouter.get(
   }),
 );
 
+// If the underlying timecards for this week are still around and the week falls within the
+// self-heal lookback (the last ~12 weeks), the automatic close-out will simply recompute and
+// re-archive it next time it runs — delete the timecards first (or wait past the lookback window)
+// for this to stick.
+timecardsRouter.delete(
+  '/payroll-periods/:id',
+  requireRole('admin'),
+  asyncHandler(async (req, res) => {
+    const { rows } = await pool.query(`DELETE FROM payroll_periods WHERE id = $1 RETURNING id`, [req.params.id]);
+    if (!rows.length) throw new ApiError(404, 'payroll_period_not_found');
+    res.status(204).end();
+  }),
+);
+
 // Background location pings (feature 3), throttled/batched on-device.
 const pingSchema = z.object({
   points: z

@@ -17,6 +17,17 @@ interface Document {
 const CATEGORIES = ['Production', 'Property Map'] as const;
 const IMAGE_EXTENSIONS = new Set(['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg']);
 
+// Surfaces the backend's specific reason (e.g. "object storage isn't configured") instead of a
+// generic "Failed to upload" — the only diagnostic available on a live deploy without shell/log access.
+function uploadErrorMessage(error: unknown): string {
+  const err = error as { code?: string; response?: { data?: { error?: string; details?: { message?: string } } } };
+  if (err.code === 'ECONNABORTED') return 'Upload timed out — the object storage endpoint may be unreachable.';
+  const detail = err.response?.data?.details?.message;
+  if (detail) return detail;
+  if (err.response?.data?.error === 'file_required') return 'Choose a file first.';
+  return 'Failed to upload.';
+}
+
 // Any file type is allowed — this just labels what was uploaded, derived from the file itself
 // rather than asked of the user.
 function deriveDocType(file: File): string {
@@ -92,7 +103,9 @@ export function UploadCenter() {
         <button type="submit" disabled={uploadMutation.isPending} className="rounded-md bg-brand-600 px-3 py-2 text-sm font-medium text-white hover:bg-brand-700">
           {uploadMutation.isPending ? 'Uploading…' : 'Upload'}
         </button>
-        {uploadMutation.isError && <p className="text-sm text-red-600 sm:col-span-2 lg:col-span-4">Failed to upload.</p>}
+        {uploadMutation.isError && (
+          <p className="text-sm text-red-600 sm:col-span-2 lg:col-span-4">{uploadErrorMessage(uploadMutation.error)}</p>
+        )}
       </form>
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
