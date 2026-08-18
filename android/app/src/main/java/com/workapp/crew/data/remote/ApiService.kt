@@ -38,7 +38,18 @@ data class ActiveTimecardDto(
 data class LocationPingBatchRequest(val points: List<LocationPingPointDto>, val jobId: String?)
 data class LocationPingPointDto(val location: LatLngDto, val recordedAt: String, val accuracyM: Float?, val batteryPct: Int?)
 
-data class SyncPullResponse<T>(val entityType: String, val since: String, val records: List<T>, val syncedAt: String)
+// Pull-sync response shapes are per-entity (not a shared generic) so Moshi can decode them without
+// runtime type erasure gymnastics — see SyncWorker.pullJobs/pullMaterials.
+data class JobPullDto(
+    val id: String, val job_number: String, val title: String, val description: String?,
+    val status: String, val priority: String, val lat: Double, val lng: Double,
+    val geofence_radius_m: Int?, val geofence_points: List<LatLngDto>?,
+    val scheduled_start: String?, val scheduled_end: String?, val updated_at: String,
+)
+data class JobsPullResponse(val entityType: String, val since: String, val records: List<JobPullDto>, val syncedAt: String)
+
+data class MaterialPullDto(val id: String, val sku: String, val name: String, val category: String, val unit: String, val updated_at: String)
+data class MaterialsPullResponse(val entityType: String, val since: String, val records: List<MaterialPullDto>, val syncedAt: String)
 
 interface ApiService {
     @POST("auth/login")
@@ -86,6 +97,9 @@ interface ApiService {
     @PUT("documents/{documentId}/annotations")
     suspend fun putAnnotations(@Path("documentId") documentId: String, @Body body: Map<String, @JvmSuppressWildcards Any>)
 
-    @GET("sync/pull/{entityType}")
-    suspend fun pull(@Path("entityType") entityType: String): SyncPullResponse<Map<String, @JvmSuppressWildcards Any>>
+    @GET("sync/pull/jobs")
+    suspend fun pullJobs(): JobsPullResponse
+
+    @GET("sync/pull/material_catalog")
+    suspend fun pullMaterials(): MaterialsPullResponse
 }

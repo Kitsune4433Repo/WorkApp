@@ -7,21 +7,34 @@ import { asyncHandler, ApiError } from '../middleware/errorHandler';
 export const syncRouter = Router();
 syncRouter.use(requireAuth);
 
+// Full field set the Android/web clients cache locally for offline use. geofence_points is the
+// polygon's exterior ring flattened to [{lat,lng}, ...] (ST_DumpPoints) so devices don't need a
+// GeoJSON parser just to run the on-device GeofenceEvaluator fallback.
+const JOBS_PULL_QUERY = `
+  SELECT j.id, j.job_number, j.title, j.description, j.status, j.priority,
+         ST_Y(j.site_location::geometry) AS lat, ST_X(j.site_location::geometry) AS lng,
+         j.geofence_radius_m,
+         (SELECT json_agg(json_build_object('lat', ST_Y(pt.geom), 'lng', ST_X(pt.geom)) ORDER BY pt.path)
+            FROM ST_DumpPoints(j.geofence::geometry) AS pt) AS geofence_points,
+         j.scheduled_start, j.scheduled_end, j.updated_at
+    FROM jobs j
+   WHERE j.updated_at > $1`;
+
 const ENTITY_QUERIES: Record<string, string> = {
-  jobs: `SELECT id, job_number, title, status, updated_at FROM jobs WHERE updated_at > $1 ORDER BY updated_at`,
   material_catalog: `SELECT id, sku, name, category, unit, created_at AS updated_at FROM material_catalog WHERE created_at > $1 ORDER BY created_at`,
   truck_inventory: `SELECT id, user_id, material_id, quantity_have, version, updated_at FROM truck_inventory WHERE updated_at > $1 ORDER BY updated_at`,
   documents: `SELECT id, title, doc_type, current_version, updated_at FROM documents WHERE updated_at > $1 ORDER BY updated_at`,
   knowledge_base_articles: `SELECT id, title, category, updated_at FROM knowledge_base_articles WHERE updated_at > $1 ORDER BY updated_at`,
 };
 
+const PULLABLE_ENTITY_TYPES = new Set([...Object.keys(ENTITY_QUERIES), 'jobs']);
+
 // Incremental pull sync: device requests everything changed since its last checkpoint per entity type.
 syncRouter.get(
   '/pull/:entityType',
   asyncHandler(async (req, res) => {
     const { entityType } = req.params;
-    const query = ENTITY_QUERIES[entityType];
-    if (!query) throw new ApiError(400, 'unknown_entity_type');
+    if (!PULLABLE_ENTITY_TYPES.has(entityType)) throw new ApiError(400, 'unknown_entity_type');
 
     const deviceId = req.deviceId!;
     const { rows: cp } = await pool.query(
@@ -30,7 +43,20 @@ syncRouter.get(
     );
     const since = cp[0]?.last_synced_at ?? new Date(0);
 
-    const { rows } = await pool.query(query, [since]);
+    let rows: unknown[];
+    if (entityType === 'jobs') {
+      // Field roles only pull jobs assigned to them; office roles see the full changed set.
+      const isFieldRole = req.user!.role === 'technician' || req.user!.role === 'crew_lead';
+      const params: unknown[] = [since];
+      let assignmentFilter = '';
+      if (isFieldRole) {
+        params.push(req.user!.id);
+        assignmentFilter = `AND EXISTS (SELECT 1 FROM job_assignments a WHERE a.job_id = j.id AND a.user_id = $${params.length})`;
+      }
+      ({ rows } = await pool.query(`${JOBS_PULL_QUERY} ${assignmentFilter} ORDER BY j.updated_at`, params));
+    } else {
+      ({ rows } = await pool.query(ENTITY_QUERIES[entityType], [since]));
+    }
     const now = new Date();
 
     await pool.query(

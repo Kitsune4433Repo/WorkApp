@@ -38,6 +38,16 @@ concurrency: a `version` counter per layer. If the server's version has moved ah
 device last saw, the write is rejected (409) and logged to `sync_conflicts` for admin review
 instead of silently clobbering a redline someone else drew (feature 9).
 
+The reverse direction — pulling server state down — goes through `GET /api/sync/pull/:entityType`,
+checkpointed per `(device_id, entity_type)` in `sync_checkpoints` so each sync only fetches what
+changed since last time. `SyncWorker` currently pulls `jobs` (role-filtered: field roles only get
+jobs they're assigned to, via `job_assignments`) and `material_catalog`, since those are the two
+reference tables the field screens need cached to work offline — a job's geofence polygon is
+flattened server-side (`ST_DumpPoints`) to a plain `[{lat,lng}]` array so the Android client never
+needs a GeoJSON parser to run `GeofenceEvaluator`. Truck inventory intentionally isn't pulled this
+way — its balance is derived locally from the append-only ledger described above, not overwritten
+wholesale from a snapshot.
+
 ## Geofencing (feature 3)
 
 The Android client runs an offline point-in-polygon / haversine check (`GeofenceEvaluator`) purely

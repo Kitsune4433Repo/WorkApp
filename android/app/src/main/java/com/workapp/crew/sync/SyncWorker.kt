@@ -3,10 +3,15 @@ package com.workapp.crew.sync
 import android.content.Context
 import androidx.hilt.work.HiltWorker
 import androidx.work.*
+import com.squareup.moshi.Moshi
+import com.squareup.moshi.Types
 import com.workapp.crew.data.local.dao.ChatDao
 import com.workapp.crew.data.local.dao.DocumentDao
 import com.workapp.crew.data.local.dao.InventoryDao
+import com.workapp.crew.data.local.dao.JobDao
 import com.workapp.crew.data.local.dao.TimecardDao
+import com.workapp.crew.data.local.entities.JobEntity
+import com.workapp.crew.data.local.entities.MaterialEntity
 import com.workapp.crew.data.remote.*
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
@@ -15,6 +20,7 @@ import okhttp3.MultipartBody
 import okhttp3.RequestBody.Companion.asRequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.File
+import java.time.Instant
 import java.util.concurrent.TimeUnit
 
 /**
@@ -32,7 +38,9 @@ class SyncWorker @AssistedInject constructor(
     private val timecardDao: TimecardDao,
     private val documentDao: DocumentDao,
     private val chatDao: ChatDao,
+    private val jobDao: JobDao,
     private val tokenStore: AuthTokenStore,
+    private val moshi: Moshi,
 ) : CoroutineWorker(context, params) {
 
     override suspend fun doWork(): Result {
@@ -45,6 +53,8 @@ class SyncWorker @AssistedInject constructor(
             pushChatMessages()
             pushMapAnnotations()
             pushPhotoProofs()
+            pullMaterials()
+            pullJobs()
             Result.success()
         } catch (e: Exception) {
             // Network/5xx failures retry with WorkManager's backoff; validation errors (4xx) would
@@ -171,6 +181,45 @@ class SyncWorker @AssistedInject constructor(
             documentDao.markPhotoSynced(photo.clientPhotoId)
         }
     }
+
+    /** Feature 8/1: keeps the local material catalog current so the inventory +/- screen and QR
+     * transfer flow can resolve a material by name instead of a hand-typed UUID. */
+    private suspend fun pullMaterials() {
+        val response = api.pullMaterials()
+        if (response.records.isEmpty()) return
+        inventoryDao.upsertMaterials(
+            response.records.map { MaterialEntity(id = it.id, sku = it.sku, name = it.name, category = it.category, unit = it.unit) },
+        )
+    }
+
+    /** Feature 10: keeps assigned jobs (and their geofence) available offline so clock-in works
+     * with zero signal on site, and so GeofenceEvaluator has fresh data to check against. */
+    private suspend fun pullJobs() {
+        val response = api.pullJobs()
+        if (response.records.isEmpty()) return
+        val geofenceAdapter = moshi.adapter<List<LatLngDto>>(Types.newParameterizedType(List::class.java, LatLngDto::class.java))
+        jobDao.upsertAll(
+            response.records.map { dto ->
+                JobEntity(
+                    id = dto.id,
+                    jobNumber = dto.job_number,
+                    title = dto.title,
+                    description = dto.description,
+                    status = dto.status,
+                    priority = dto.priority,
+                    siteLat = dto.lat,
+                    siteLng = dto.lng,
+                    geofenceRadiusM = dto.geofence_radius_m,
+                    geofencePolygonJson = dto.geofence_points?.let { geofenceAdapter.toJson(it) },
+                    scheduledStart = parseIsoMillis(dto.scheduled_start),
+                    scheduledEnd = parseIsoMillis(dto.scheduled_end),
+                    updatedAt = parseIsoMillis(dto.updated_at) ?: System.currentTimeMillis(),
+                )
+            },
+        )
+    }
+
+    private fun parseIsoMillis(iso: String?): Long? = iso?.let { Instant.parse(it).toEpochMilli() }
 
     private fun isoTimestamp(epochMillis: Long): String =
         java.time.Instant.ofEpochMilli(epochMillis).toString()

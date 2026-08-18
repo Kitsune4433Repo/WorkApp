@@ -48,8 +48,9 @@ class InventoryRepository @Inject constructor(
     }
 
     /** Feature 12, receiving side: claims a scanned transfer token and reflects the credited
-     * quantity in the local ledger immediately. Only visible in the UI if [materialId] is already
-     * cached locally from a previous catalog sync — see the pull-sync note in docs/ARCHITECTURE.md. */
+     * quantity in the local ledger immediately. The claimed material only shows up in the have
+     * ledger UI once it's in the local material catalog — normally already true by the time a
+     * transfer happens, since SyncWorker.pullMaterials() keeps that cache current in the background. */
     suspend fun claimQrTransfer(token: String): QrTransferClaimResponse {
         val response = api.claimQrTransfer(token)
         val currentBalance = dao.getQuantityHave(response.materialId) ?: 0.0

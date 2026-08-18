@@ -1,5 +1,7 @@
 # WorkApp — Telecommunications Crew Management System
 
+[![CI](https://github.com/Kitsune4433Repo/WorkApp/actions/workflows/ci.yml/badge.svg)](https://github.com/Kitsune4433Repo/WorkApp/actions/workflows/ci.yml)
+
 Native Android + web fallback field crew management system, backed by a shared PostgreSQL/PostGIS
 API. See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the full system design.
 
