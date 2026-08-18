@@ -15,7 +15,12 @@ import retrofit2.converter.moshi.MoshiConverterFactory
 import java.util.concurrent.TimeUnit
 import javax.inject.Singleton
 
-private const val BASE_URL = "https://api.crewops.example.com/api/"
+private const val API_ORIGIN = "https://api.crewops.example.com"
+private const val BASE_URL = "$API_ORIGIN/api/"
+
+/** The bare origin (no `/api` suffix), for the Socket.IO connection — chat's `/ws/chat` path is
+ * separate from the REST API root. See ChatRepository. */
+const val SOCKET_ORIGIN = API_ORIGIN
 
 @Module
 @InstallIn(SingletonComponent::class)
@@ -33,6 +38,16 @@ object NetworkModule {
             .addInterceptor(HttpLoggingInterceptor().apply { level = HttpLoggingInterceptor.Level.BASIC })
             .connectTimeout(20, TimeUnit.SECONDS)
             .readTimeout(30, TimeUnit.SECONDS)
+            .retryOnConnectionFailure(true)
+            .build()
+
+    @Provides
+    @Singleton
+    @RawHttpClient
+    fun provideRawOkHttpClient(): OkHttpClient =
+        OkHttpClient.Builder()
+            .connectTimeout(20, TimeUnit.SECONDS)
+            .readTimeout(60, TimeUnit.SECONDS)
             .retryOnConnectionFailure(true)
             .build()
 

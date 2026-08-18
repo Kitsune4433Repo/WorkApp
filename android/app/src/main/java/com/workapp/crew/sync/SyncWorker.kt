@@ -55,6 +55,7 @@ class SyncWorker @AssistedInject constructor(
             pushPhotoProofs()
             pullMaterials()
             pullJobs()
+            pullDocuments()
             Result.success()
         } catch (e: Exception) {
             // Network/5xx failures retry with WorkManager's backoff; validation errors (4xx) would
@@ -217,6 +218,25 @@ class SyncWorker @AssistedInject constructor(
                 )
             },
         )
+    }
+
+    /** Feature 6: refreshes document/map metadata (title, category, version). The file body itself
+     * is fetched lazily by DocumentRepository.ensureCached() the first time a technician opens it —
+     * pulling every attached PDF/map on every sync would be wasteful on a metered field connection. */
+    private suspend fun pullDocuments() {
+        val response = api.pullDocuments()
+        for (dto in response.records) {
+            documentDao.upsertMetadata(
+                id = dto.id,
+                title = dto.title,
+                docType = dto.doc_type,
+                category = dto.category,
+                jobId = dto.job_id,
+                isMap = dto.is_map,
+                currentVersion = dto.current_version,
+                updatedAt = parseIsoMillis(dto.updated_at) ?: System.currentTimeMillis(),
+            )
+        }
     }
 
     private fun parseIsoMillis(iso: String?): Long? = iso?.let { Instant.parse(it).toEpochMilli() }

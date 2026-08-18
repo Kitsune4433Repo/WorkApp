@@ -69,7 +69,20 @@ compute the same live figure client-side for a ticking real-time display.
 Socket.IO namespace at `/ws/chat`, authenticated via the same JWT. Messages persist to
 `chat_messages` with a `client_msg_id` idempotency key before broadcast, so a message sent while
 briefly offline and retried never appears twice. Delivery falls back to FCM push when the
-recipient's socket isn't connected.
+recipient's socket isn't connected. On Android, `ChatRepository` writes a sent message to Room
+optimistically before emitting it, and filters its *own* echoed `message:new` broadcast back out
+(the server's `io.to(room).emit(...)` reaches the sender too) to avoid double-inserting it — the
+optimistic row is reconciled via the emit's ack instead.
+
+## Offline document/map library (feature 6)
+
+`documents`/`document_versions` metadata syncs to the Android client via the same pull-sync
+mechanism as jobs and the material catalog (`SyncWorker.pullDocuments()`); the (often large) file
+body is fetched lazily, the first time a technician opens it, via a two-hop request — `GET
+/api/documents/{id}/download` returns a short-lived signed object-storage URL, which the client
+then downloads directly (bypassing the API's auth interceptor, since the signed URL carries its
+own). The cached file path is stored per-document and deliberately excluded from the metadata
+upsert's `ON CONFLICT` clause, so a later metadata refresh never forgets a file is already cached.
 
 ## Security notes
 

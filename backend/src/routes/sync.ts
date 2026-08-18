@@ -23,7 +23,7 @@ const JOBS_PULL_QUERY = `
 const ENTITY_QUERIES: Record<string, string> = {
   material_catalog: `SELECT id, sku, name, category, unit, created_at AS updated_at FROM material_catalog WHERE created_at > $1 ORDER BY created_at`,
   truck_inventory: `SELECT id, user_id, material_id, quantity_have, version, updated_at FROM truck_inventory WHERE updated_at > $1 ORDER BY updated_at`,
-  documents: `SELECT id, title, doc_type, current_version, updated_at FROM documents WHERE updated_at > $1 ORDER BY updated_at`,
+  documents: `SELECT id, title, doc_type, category, job_id, current_version, is_map, updated_at FROM documents WHERE updated_at > $1 ORDER BY updated_at`,
   knowledge_base_articles: `SELECT id, title, category, updated_at FROM knowledge_base_articles WHERE updated_at > $1 ORDER BY updated_at`,
 };
 

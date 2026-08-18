@@ -8,6 +8,8 @@ data class DocumentEntity(
     @PrimaryKey val id: String,
     val title: String,
     val docType: String,
+    val category: String?,
+    val jobId: String?,
     val isMap: Boolean,
     val currentVersion: Int,
     val localFilePath: String?, // populated once the file body is cached for offline viewing

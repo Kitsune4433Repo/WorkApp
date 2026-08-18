@@ -6,6 +6,8 @@ import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Chat
+import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Inventory
 import androidx.compose.material.icons.filled.Logout
 import androidx.compose.material.icons.filled.QrCode
@@ -38,6 +40,8 @@ private val BOTTOM_DESTINATIONS = listOf(
     BottomDestination("clock_in", "Clock In", Icons.Filled.Schedule),
     BottomDestination("inventory", "Inventory", Icons.Filled.Inventory),
     BottomDestination("qr_share", "Share", Icons.Filled.QrCode),
+    BottomDestination("documents", "Docs", Icons.Filled.Folder),
+    BottomDestination("chat", "Chat", Icons.Filled.Chat),
 )
 
 @AndroidEntryPoint
@@ -91,6 +95,10 @@ private fun AuthenticatedNavHost(onLogout: () -> Unit) {
             composable("clock_in") { ClockInScreen() }
             composable("inventory") { InventoryScreen() }
             composable("qr_share") { QrShareScreen() }
+            composable("documents") {
+                DocumentLibraryScreen(onOpenMap = { documentId -> navController.navigate("map_editor/$documentId") })
+            }
+            composable("chat") { ChatScreen() }
             composable("map_editor/{documentId}") { backStackEntry ->
                 MapEditorScreen(documentId = backStackEntry.arguments?.getString("documentId").orEmpty())
             }

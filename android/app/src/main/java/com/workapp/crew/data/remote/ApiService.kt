@@ -51,6 +51,21 @@ data class JobsPullResponse(val entityType: String, val since: String, val recor
 data class MaterialPullDto(val id: String, val sku: String, val name: String, val category: String, val unit: String, val updated_at: String)
 data class MaterialsPullResponse(val entityType: String, val since: String, val records: List<MaterialPullDto>, val syncedAt: String)
 
+data class DocumentPullDto(
+    val id: String, val title: String, val doc_type: String, val category: String?,
+    val job_id: String?, val current_version: Int, val is_map: Boolean, val updated_at: String,
+)
+data class DocumentsPullResponse(val entityType: String, val since: String, val records: List<DocumentPullDto>, val syncedAt: String)
+
+data class DocumentDownloadUrlResponse(val url: String)
+
+data class ChatChannelDto(val id: String, val type: String, val name: String?, val job_id: String?)
+data class CreateChannelRequest(val type: String, val name: String?, val jobId: String?, val memberUserIds: List<String>)
+data class CreateChannelResponse(val id: String)
+data class ChatMessageRemoteDto(
+    val id: String, val sender_id: String, val body: String?, val attachment_url: String?, val sent_at: String,
+)
+
 interface ApiService {
     @POST("auth/login")
     suspend fun login(@Body body: LoginRequest): AuthTokens
@@ -102,4 +117,19 @@ interface ApiService {
 
     @GET("sync/pull/material_catalog")
     suspend fun pullMaterials(): MaterialsPullResponse
+
+    @GET("sync/pull/documents")
+    suspend fun pullDocuments(): DocumentsPullResponse
+
+    @GET("documents/{documentId}/download")
+    suspend fun getDocumentDownloadUrl(@Path("documentId") documentId: String): DocumentDownloadUrlResponse
+
+    @GET("chat/channels")
+    suspend fun getChatChannels(): List<ChatChannelDto>
+
+    @POST("chat/channels")
+    suspend fun createChatChannel(@Body body: CreateChannelRequest): CreateChannelResponse
+
+    @GET("chat/channels/{channelId}/messages")
+    suspend fun getChatMessages(@Path("channelId") channelId: String, @Query("before") before: String? = null): List<ChatMessageRemoteDto>
 }

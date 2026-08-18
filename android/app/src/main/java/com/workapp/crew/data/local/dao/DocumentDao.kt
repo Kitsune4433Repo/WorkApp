@@ -17,6 +17,34 @@ interface DocumentDao {
     @Upsert
     suspend fun upsertAll(docs: List<DocumentEntity>)
 
+    // Metadata-only upsert used by pull-sync: on conflict, localFilePath is deliberately left out
+    // of the SET clause so a previously downloaded/cached file survives a metadata refresh. A plain
+    // @Upsert would replace the whole row and silently forget the cached file exists.
+    @Query(
+        """
+        INSERT INTO documents (id, title, docType, category, jobId, isMap, currentVersion, localFilePath, updatedAt)
+        VALUES (:id, :title, :docType, :category, :jobId, :isMap, :currentVersion, NULL, :updatedAt)
+        ON CONFLICT(id) DO UPDATE SET
+            title = excluded.title,
+            docType = excluded.docType,
+            category = excluded.category,
+            jobId = excluded.jobId,
+            isMap = excluded.isMap,
+            currentVersion = excluded.currentVersion,
+            updatedAt = excluded.updatedAt
+        """
+    )
+    suspend fun upsertMetadata(
+        id: String,
+        title: String,
+        docType: String,
+        category: String?,
+        jobId: String?,
+        isMap: Boolean,
+        currentVersion: Int,
+        updatedAt: Long,
+    )
+
     @Query("UPDATE documents SET localFilePath = :path WHERE id = :documentId")
     suspend fun setLocalFilePath(documentId: String, path: String)
 
