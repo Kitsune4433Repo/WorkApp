@@ -66,7 +66,7 @@ jobsRouter.post(
       const { rows } = await client.query(
         `INSERT INTO jobs (job_number, title, description, priority, site_address, site_location,
                             geofence, geofence_radius_m, scheduled_start, scheduled_end, created_by, crew_id, status)
-         VALUES ($1,$2,$3,$4,$5, ST_GeogFromText($6), ${body.geofencePolygon ? 'ST_GeogFromText($7)' : 'NULL'}, $8, $9, $10, $11, $12, 'scheduled')
+         VALUES ($1,$2,$3,$4,$5, ST_GeogFromText($6), ST_GeogFromText($7), $8, $9, $10, $11, $12, 'scheduled')
          RETURNING id`,
         [
           body.jobNumber,
@@ -75,7 +75,7 @@ jobsRouter.post(
           body.priority,
           body.siteAddress ?? null,
           `SRID=4326;POINT(${body.siteLocation.lng} ${body.siteLocation.lat})`,
-          ...(body.geofencePolygon ? [polygonToWkt(body.geofencePolygon)] : []),
+          body.geofencePolygon ? polygonToWkt(body.geofencePolygon) : null,
           body.geofenceRadiusM ?? Number(process.env.GEOFENCE_DEFAULT_RADIUS_M ?? 75),
           body.scheduledStart ?? null,
           body.scheduledEnd ?? null,
@@ -162,6 +162,19 @@ jobsRouter.patch(
     if (!sets.length) throw new ApiError(400, 'no_fields_to_update');
     params.push(req.params.jobId);
     await pool.query(`UPDATE jobs SET ${sets.join(', ')}, updated_at = now() WHERE id = $${params.length}`, params);
+    res.status(204).end();
+  }),
+);
+
+// Hard delete: every table referencing jobs.id (assignments, materials, timecards, chat, documents,
+// photo proofs) already declares ON DELETE CASCADE/SET NULL in schema.sql, so removing a job cleanly
+// removes its dependent rows without a foreign-key violation.
+jobsRouter.delete(
+  '/:jobId',
+  requireRole('admin', 'dispatcher'),
+  asyncHandler(async (req, res) => {
+    const { rows } = await pool.query(`DELETE FROM jobs WHERE id = $1 RETURNING id`, [req.params.jobId]);
+    if (!rows.length) throw new ApiError(404, 'job_not_found');
     res.status(204).end();
   }),
 );

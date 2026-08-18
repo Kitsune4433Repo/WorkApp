@@ -40,7 +40,18 @@ export function DispatcherDashboard() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['jobs'] }),
   });
 
+  const deleteMutation = useMutation({
+    mutationFn: (jobId: string) => api.delete(`/jobs/${jobId}`),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['jobs'] }),
+  });
+
   const canDispatch = user?.role === 'admin' || user?.role === 'dispatcher';
+
+  function onRemove(job: Job) {
+    if (window.confirm(`Remove job ${job.job_number} — ${job.title}? This cannot be undone.`)) {
+      deleteMutation.mutate(job.id);
+    }
+  }
 
   return (
     <div className="space-y-8">
@@ -76,7 +87,7 @@ export function DispatcherDashboard() {
                 </td>
                 <td className="px-4 py-3">{job.scheduled_start ? new Date(job.scheduled_start).toLocaleString() : '—'}</td>
                 {canDispatch && (
-                  <td className="px-4 py-3 text-right">
+                  <td className="px-4 py-3 text-right space-x-2">
                     {job.status === 'scheduled' && (
                       <button
                         onClick={() => dispatchMutation.mutate(job.id)}
@@ -85,6 +96,13 @@ export function DispatcherDashboard() {
                         Dispatch
                       </button>
                     )}
+                    <button
+                      onClick={() => onRemove(job)}
+                      disabled={deleteMutation.isPending}
+                      className="rounded-md border border-red-300 px-3 py-1 text-xs font-medium text-red-600 hover:bg-red-50"
+                    >
+                      Remove
+                    </button>
                   </td>
                 )}
               </tr>
