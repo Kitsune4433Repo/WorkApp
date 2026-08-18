@@ -29,7 +29,7 @@ authRouter.post(
   asyncHandler(async (req, res) => {
     const { email, password } = loginSchema.parse(req.body);
     const { rows } = await pool.query(
-      `SELECT id, email, password_hash, role, full_name, is_active FROM users WHERE email = $1`,
+      `SELECT id, email, password_hash, role, full_name, hourly_rate_cents, is_active FROM users WHERE email = $1`,
       [email],
     );
     const user = rows[0];
@@ -41,7 +41,13 @@ authRouter.post(
     const tokens = signTokens(user.id, user.email, user.role);
     res.json({
       ...tokens,
-      user: { id: user.id, email: user.email, role: user.role, fullName: user.full_name },
+      user: {
+        id: user.id,
+        email: user.email,
+        role: user.role,
+        fullName: user.full_name,
+        hourlyRateCents: user.hourly_rate_cents,
+      },
     });
   }),
 );

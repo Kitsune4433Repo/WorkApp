@@ -4,6 +4,7 @@ dist/
 build/
 .env
 *.log
+*.tsbuildinfo
 
 # Android / Gradle
 android/.gradle/

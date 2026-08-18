@@ -9,6 +9,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.workapp.crew.data.repository.AuthRepository
 import com.workapp.crew.data.repository.LiveEarnings
 import com.workapp.crew.data.repository.TimecardRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -20,12 +21,13 @@ import javax.inject.Inject
 @HiltViewModel
 class ClockInViewModel @Inject constructor(
     private val repository: TimecardRepository,
+    private val authRepository: AuthRepository,
 ) : ViewModel() {
     val activeTimecard = repository.observeActive().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
     val liveEarnings = repository.observeLiveEarnings().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
-    fun clockIn(jobId: String?, lat: Double, lng: Double, hourlyRateCents: Int) = viewModelScope.launch {
-        repository.clockIn(jobId, lat, lng, hourlyRateCents)
+    fun clockIn(jobId: String?, lat: Double, lng: Double) = viewModelScope.launch {
+        repository.clockIn(jobId, lat, lng, authRepository.currentHourlyRateCents)
     }
 
     fun clockOut(lat: Double, lng: Double) = viewModelScope.launch {
@@ -56,7 +58,7 @@ fun ClockInScreen(viewModel: ClockInViewModel = hiltViewModel()) {
                 Text("Clock out")
             }
         } else {
-            Button(onClick = { location?.let { viewModel.clockIn(null, it.first, it.second, 0) } }) {
+            Button(onClick = { location?.let { viewModel.clockIn(null, it.first, it.second) } }) {
                 Text("Clock in")
             }
         }

@@ -8,8 +8,8 @@ import retrofit2.http.*
 // mapping into Room entities happens once, in the repository layer.
 
 data class LoginRequest(val email: String, val password: String)
-data class AuthTokens(val access: String, val refresh: String, val user: UserDto)
-data class UserDto(val id: String, val email: String, val role: String, val fullName: String)
+data class AuthTokens(val access: String, val refresh: String, val user: UserDto? = null)
+data class UserDto(val id: String, val email: String, val role: String, val fullName: String, val hourlyRateCents: Int)
 data class RefreshRequest(val refreshToken: String)
 
 data class LatLngDto(val lat: Double, val lng: Double)
