@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { v4 as uuid } from 'uuid';
 import { api } from '../api/client';
 import { useAuth } from '../context/AuthContext';
@@ -14,13 +14,34 @@ interface Channel {
 
 export function ChatPage() {
   const { user } = useAuth();
+  const queryClient = useQueryClient();
   const [activeChannelId, setActiveChannelId] = useState<string | null>(null);
   const [draft, setDraft] = useState('');
+  const [showCreateRoom, setShowCreateRoom] = useState(false);
+  const [newRoomName, setNewRoomName] = useState('');
 
   const { data: channels } = useQuery<Channel[]>({
     queryKey: ['chat', 'channels'],
     queryFn: async () => (await api.get('/chat/channels')).data,
   });
+
+  // Broadcast channels are open rooms an admin creates — every user (present and future) can see
+  // and post in them with no per-user invite step, unlike direct/job channels.
+  const createRoomMutation = useMutation({
+    mutationFn: () => api.post('/chat/channels', { type: 'broadcast', name: newRoomName.trim() }),
+    onSuccess: (res) => {
+      queryClient.invalidateQueries({ queryKey: ['chat', 'channels'] });
+      setNewRoomName('');
+      setShowCreateRoom(false);
+      setActiveChannelId(res.data.id);
+    },
+  });
+
+  function onCreateRoom(e: FormEvent) {
+    e.preventDefault();
+    if (!newRoomName.trim()) return;
+    createRoomMutation.mutate();
+  }
 
   const { messages, sendMessage, setInitialMessages } = useChatSocket(activeChannelId);
 
@@ -38,16 +59,58 @@ export function ChatPage() {
 
   return (
     <div className="flex h-[calc(100vh-6rem)] gap-4">
-      <aside className="w-56 shrink-0 overflow-y-auto rounded-lg border border-slate-200 bg-white">
-        {channels?.map((c) => (
-          <button
-            key={c.id}
-            onClick={() => setActiveChannelId(c.id)}
-            className={`block w-full border-b border-slate-100 px-4 py-3 text-left text-sm ${activeChannelId === c.id ? 'bg-brand-50 font-medium text-brand-700' : 'hover:bg-slate-50'}`}
-          >
-            {c.name ?? `${c.type} channel`}
-          </button>
-        ))}
+      <aside className="flex w-56 shrink-0 flex-col overflow-y-auto rounded-lg border border-slate-200 bg-white">
+        <div className="flex-1 overflow-y-auto">
+          {channels?.map((c) => (
+            <button
+              key={c.id}
+              onClick={() => setActiveChannelId(c.id)}
+              className={`block w-full border-b border-slate-100 px-4 py-3 text-left text-sm ${activeChannelId === c.id ? 'bg-brand-50 font-medium text-brand-700' : 'hover:bg-slate-50'}`}
+            >
+              {c.name ?? `${c.type} channel`}
+            </button>
+          ))}
+        </div>
+        {user?.role === 'admin' && (
+          <div className="border-t border-slate-200 p-2">
+            {showCreateRoom ? (
+              <form onSubmit={onCreateRoom} className="space-y-2">
+                <input
+                  autoFocus
+                  required
+                  placeholder="Room name"
+                  value={newRoomName}
+                  onChange={(e) => setNewRoomName(e.target.value)}
+                  className="w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm"
+                />
+                <div className="flex gap-2">
+                  <button
+                    type="submit"
+                    disabled={createRoomMutation.isPending}
+                    className="flex-1 rounded-md bg-brand-600 px-2 py-1.5 text-xs font-medium text-white hover:bg-brand-700"
+                  >
+                    {createRoomMutation.isPending ? 'Creating…' : 'Create'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowCreateRoom(false)}
+                    className="rounded-md border border-slate-300 px-2 py-1.5 text-xs text-slate-600 hover:bg-slate-50"
+                  >
+                    Cancel
+                  </button>
+                </div>
+                {createRoomMutation.isError && <p className="text-xs text-red-600">Failed to create room.</p>}
+              </form>
+            ) : (
+              <button
+                onClick={() => setShowCreateRoom(true)}
+                className="w-full rounded-md border border-slate-300 px-2 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50"
+              >
+                + New room (everyone)
+              </button>
+            )}
+          </div>
+        )}
       </aside>
 
       <div className="flex flex-1 flex-col rounded-lg border border-slate-200 bg-white">

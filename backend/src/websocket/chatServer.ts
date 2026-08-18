@@ -31,8 +31,12 @@ export function attachChatServer(httpServer: HttpServer) {
     socket.join(`user:${socket.userId}`);
 
     socket.on('channel:join', async (channelId: string) => {
+      // Broadcast (open, admin-made) rooms don't require a chat_channel_members row — every user
+      // has access, including ones created after the room was.
       const { rows } = await pool.query(
-        `SELECT 1 FROM chat_channel_members WHERE channel_id = $1 AND user_id = $2`,
+        `SELECT 1 FROM chat_channels c
+           LEFT JOIN chat_channel_members m ON m.channel_id = c.id AND m.user_id = $2
+          WHERE c.id = $1 AND (m.user_id IS NOT NULL OR c.type = 'broadcast')`,
         [channelId, socket.userId],
       );
       if (rows.length) socket.join(`channel:${channelId}`);
@@ -45,6 +49,18 @@ export function attachChatServer(httpServer: HttpServer) {
         ack?: (result: unknown) => void,
       ) => {
         try {
+          const { rows: channelRows } = await pool.query(
+            `SELECT c.type FROM chat_channels c
+               LEFT JOIN chat_channel_members m ON m.channel_id = c.id AND m.user_id = $2
+              WHERE c.id = $1 AND (m.user_id IS NOT NULL OR c.type = 'broadcast')`,
+            [payload.channelId, socket.userId],
+          );
+          if (!channelRows.length) {
+            ack?.({ error: 'not_a_channel_member' });
+            return;
+          }
+          const isBroadcast = channelRows[0].type === 'broadcast';
+
           const { rows: existing } = await pool.query(
             `SELECT id, sent_at FROM chat_messages WHERE channel_id = $1 AND client_msg_id = $2`,
             [payload.channelId, payload.clientMsgId],
@@ -59,9 +75,13 @@ export function attachChatServer(httpServer: HttpServer) {
             );
             message = rows[0];
 
+            // Broadcast rooms have no bulk chat_channel_members rows (that's the point — every user
+            // has access without one), so notify every other active user instead of just members.
             const { rows: members } = await pool.query(
-              `SELECT user_id FROM chat_channel_members WHERE channel_id = $1 AND user_id <> $2`,
-              [payload.channelId, socket.userId],
+              isBroadcast
+                ? `SELECT id AS user_id FROM users WHERE is_active AND id <> $1`
+                : `SELECT user_id FROM chat_channel_members WHERE channel_id = $2 AND user_id <> $1`,
+              isBroadcast ? [socket.userId] : [socket.userId, payload.channelId],
             );
             io.to(`channel:${payload.channelId}`).emit('message:new', {
               id: message.id,

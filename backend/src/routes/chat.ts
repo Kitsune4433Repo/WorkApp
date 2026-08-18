@@ -7,13 +7,18 @@ import { asyncHandler, ApiError } from '../middleware/errorHandler';
 export const chatRouter = Router();
 chatRouter.use(requireAuth);
 
+// 'broadcast' channels are open rooms — every user can see and post in them regardless of a
+// chat_channel_members row (including users created after the room was), so they're unioned in
+// here rather than requiring membership like direct/job channels do.
 chatRouter.get(
   '/channels',
   asyncHandler(async (req, res) => {
     const { rows } = await pool.query(
-      `SELECT c.id, c.type, c.name, c.job_id
-         FROM chat_channels c JOIN chat_channel_members m ON m.channel_id = c.id
-        WHERE m.user_id = $1 ORDER BY c.created_at DESC`,
+      `SELECT DISTINCT c.id, c.type, c.name, c.job_id, c.created_at
+         FROM chat_channels c
+         LEFT JOIN chat_channel_members m ON m.channel_id = c.id AND m.user_id = $1
+        WHERE m.user_id IS NOT NULL OR c.type = 'broadcast'
+        ORDER BY c.created_at DESC`,
       [req.user!.id],
     );
     res.json(rows);
@@ -24,13 +29,18 @@ const createChannelSchema = z.object({
   type: z.enum(['direct', 'job', 'broadcast']),
   name: z.string().optional(),
   jobId: z.string().uuid().optional(),
-  memberUserIds: z.array(z.string().uuid()).min(1),
+  memberUserIds: z.array(z.string().uuid()).default([]),
 });
 
 chatRouter.post(
   '/channels',
   asyncHandler(async (req, res) => {
     const body = createChannelSchema.parse(req.body);
+    // Broadcast (open, admin-made) rooms don't need an explicit member list — everyone already has
+    // access per the query above — but every other channel type still needs at least one other member.
+    if (body.type === 'broadcast' && req.user!.role !== 'admin') throw new ApiError(403, 'admin_only');
+    if (body.type !== 'broadcast' && !body.memberUserIds.length) throw new ApiError(400, 'member_user_ids_required');
+
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
@@ -57,11 +67,13 @@ chatRouter.get(
   '/channels/:channelId/messages',
   asyncHandler(async (req, res) => {
     const before = req.query.before as string | undefined;
-    const { rows: membership } = await pool.query(
-      `SELECT 1 FROM chat_channel_members WHERE channel_id = $1 AND user_id = $2`,
+    const { rows: access } = await pool.query(
+      `SELECT 1 FROM chat_channels c
+         LEFT JOIN chat_channel_members m ON m.channel_id = c.id AND m.user_id = $2
+        WHERE c.id = $1 AND (m.user_id IS NOT NULL OR c.type = 'broadcast')`,
       [req.params.channelId, req.user!.id],
     );
-    if (!membership.length) throw new ApiError(403, 'not_a_channel_member');
+    if (!access.length) throw new ApiError(403, 'not_a_channel_member');
 
     const { rows } = await pool.query(
       `SELECT id, sender_id, body, attachment_url, sent_at, read_by FROM chat_messages
