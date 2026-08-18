@@ -72,6 +72,20 @@ export function DispatcherDashboard() {
 
   const [editingJobId, setEditingJobId] = useState<string | null>(null);
 
+  // Lifted up from CreateJobForm so the same map used for the overview (existing jobs) also drives
+  // the new-job picker — one map on the page instead of an overview map plus a separate picker map.
+  const [siteAddress, setSiteAddress] = useState('');
+  const [siteLocation, setSiteLocation] = useState<LatLng | null>(null);
+  const [polygon, setPolygon] = useState<LatLng[]>([]);
+  const [geofenceRadiusM, setGeofenceRadiusM] = useState('75');
+
+  function resetSitePicker() {
+    setSiteAddress('');
+    setSiteLocation(null);
+    setPolygon([]);
+    setGeofenceRadiusM('75');
+  }
+
   const startMutation = useMutation({
     mutationFn: (jobId: string) => api.post(`/jobs/${jobId}/start`),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['jobs'] }),
@@ -102,9 +116,34 @@ export function DispatcherDashboard() {
         <p className="text-sm text-slate-500">Schedule, modify, and push work orders to field devices.</p>
       </div>
 
-      <JobsMap jobs={jobs ?? []} />
+      <JobsMap
+        jobs={jobs ?? []}
+        picker={
+          canDispatch
+            ? {
+                siteLocation,
+                radiusM: Number(geofenceRadiusM) || 75,
+                polygon,
+                onSiteLocationChange: setSiteLocation,
+                onPolygonChange: setPolygon,
+              }
+            : undefined
+        }
+      />
 
-      {canDispatch && <CreateJobForm />}
+      {canDispatch && (
+        <CreateJobForm
+          siteAddress={siteAddress}
+          onSiteAddressChange={setSiteAddress}
+          siteLocation={siteLocation}
+          onSiteLocationChange={setSiteLocation}
+          polygon={polygon}
+          onPolygonChange={setPolygon}
+          geofenceRadiusM={geofenceRadiusM}
+          onGeofenceRadiusMChange={setGeofenceRadiusM}
+          onCreated={resetSitePicker}
+        />
+      )}
 
       <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
         <table className="min-w-full divide-y divide-slate-200 text-sm">
@@ -266,22 +305,40 @@ function JobScheduleEditor({ job, onDone }: { job: Job; onDone: () => void }) {
   );
 }
 
-function CreateJobForm() {
+interface CreateJobFormProps {
+  siteAddress: string;
+  onSiteAddressChange: (address: string) => void;
+  siteLocation: LatLng | null;
+  onSiteLocationChange: (location: LatLng) => void;
+  polygon: LatLng[];
+  onPolygonChange: (polygon: LatLng[]) => void;
+  geofenceRadiusM: string;
+  onGeofenceRadiusMChange: (radius: string) => void;
+  onCreated: () => void;
+}
+
+function CreateJobForm({
+  siteAddress,
+  onSiteAddressChange,
+  siteLocation,
+  onSiteLocationChange,
+  polygon,
+  onPolygonChange,
+  geofenceRadiusM,
+  onGeofenceRadiusMChange,
+  onCreated,
+}: CreateJobFormProps) {
   const queryClient = useQueryClient();
   const [form, setForm] = useState({
     jobNumber: '',
     title: '',
     description: '',
-    siteAddress: '',
     priority: 'medium' as (typeof PRIORITIES)[number],
-    geofenceRadiusM: '75',
     scheduledStart: '',
     recurringStartTime: '',
     recurringEndTime: '',
     recurringUntil: '',
   });
-  const [siteLocation, setSiteLocation] = useState<LatLng | null>(null);
-  const [polygon, setPolygon] = useState<LatLng[]>([]);
   const [recurringDays, setRecurringDays] = useState<number[]>([]);
 
   function toggleDay(day: number) {
@@ -296,9 +353,9 @@ function CreateJobForm() {
         title: form.title,
         description: form.description || undefined,
         priority: form.priority,
-        siteAddress: form.siteAddress || undefined,
+        siteAddress: siteAddress || undefined,
         siteLocation,
-        geofenceRadiusM: Number(form.geofenceRadiusM),
+        geofenceRadiusM: Number(geofenceRadiusM),
         geofencePolygon: polygon.length >= 3 ? polygon : undefined,
         scheduledStart: form.scheduledStart ? new Date(form.scheduledStart).toISOString() : undefined,
         recurringDaysOfWeek: recurringDays.length ? recurringDays : undefined,
@@ -314,17 +371,14 @@ function CreateJobForm() {
         jobNumber: '',
         title: '',
         description: '',
-        siteAddress: '',
         priority: 'medium',
-        geofenceRadiusM: '75',
         scheduledStart: '',
         recurringStartTime: '',
         recurringEndTime: '',
         recurringUntil: '',
       });
-      setSiteLocation(null);
-      setPolygon([]);
       setRecurringDays([]);
+      onCreated();
     },
   });
 
@@ -363,25 +417,24 @@ function CreateJobForm() {
         <input
           type="number"
           min={10}
-          value={form.geofenceRadiusM}
-          onChange={(e) => setForm({ ...form, geofenceRadiusM: e.target.value })}
+          value={geofenceRadiusM}
+          onChange={(e) => onGeofenceRadiusMChange(e.target.value)}
           className="w-24 rounded-md border border-slate-300 px-3 py-2 text-sm"
         />
         {siteLocation && (
           <span className="text-xs text-slate-400">
-            Site: {siteLocation.lat.toFixed(5)}, {siteLocation.lng.toFixed(5)}
+            Site: {siteLocation.lat.toFixed(5)}, {siteLocation.lng.toFixed(5)} — shown as an orange pin on the map above
           </span>
         )}
       </div>
 
       <GeofenceMapPicker
-        address={form.siteAddress}
-        onAddressChange={(siteAddress) => setForm({ ...form, siteAddress })}
+        address={siteAddress}
+        onAddressChange={onSiteAddressChange}
         siteLocation={siteLocation}
-        radiusM={Number(form.geofenceRadiusM) || 75}
         polygon={polygon}
-        onSiteLocationChange={setSiteLocation}
-        onPolygonChange={setPolygon}
+        onSiteLocationChange={onSiteLocationChange}
+        onPolygonChange={onPolygonChange}
       />
 
       <div className="space-y-2 rounded-md border border-slate-200 p-3">

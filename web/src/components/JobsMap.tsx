@@ -1,10 +1,11 @@
 import { Fragment, useEffect } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, Polygon, Circle, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, Polygon, Circle, useMap, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
 import markerIcon2x from 'leaflet/dist/images/marker-icon-2x.png';
 import markerIcon from 'leaflet/dist/images/marker-icon.png';
 import markerShadow from 'leaflet/dist/images/marker-shadow.png';
 import 'leaflet/dist/leaflet.css';
+import type { LatLng } from './GeofenceMapPicker';
 
 L.Icon.Default.mergeOptions({
   iconRetinaUrl: markerIcon2x,
@@ -22,6 +23,14 @@ export interface MapJob {
   lng: number | null;
   geofence_geojson: string | null;
   geofence_radius_m: number | null;
+}
+
+export interface MapPicker {
+  siteLocation: LatLng | null;
+  radiusM: number;
+  polygon: LatLng[];
+  onSiteLocationChange: (location: LatLng) => void;
+  onPolygonChange: (polygon: LatLng[]) => void;
 }
 
 // Memphis, TN — dispatch center default.
@@ -42,6 +51,27 @@ function FitToMarkers({ jobs }: { jobs: MapJob[] }) {
   return null;
 }
 
+// MapContainer's `center` prop only sets the *initial* view — panning to a geocoded address has to
+// happen imperatively. Only re-centers when the picked location itself changes (not on every
+// render — polygon-drawing clicks re-render this component too, and shouldn't reset the user's pan).
+function RecenterOnPick({ location }: { location: LatLng | null }) {
+  const map = useMap();
+  useEffect(() => {
+    if (location) map.setView(location, 17);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location?.lat, location?.lng]);
+  return null;
+}
+
+function ClickHandler({ onPick }: { onPick: (p: LatLng) => void }) {
+  useMapEvents({
+    click(e) {
+      onPick({ lat: e.latlng.lat, lng: e.latlng.lng });
+    },
+  });
+  return null;
+}
+
 // GeoJSON Polygon coordinates are [lng, lat] and ring-closed (first point repeated at the end);
 // Leaflet wants [lat, lng] pairs and doesn't need the closing point repeated.
 function geofenceToLatLngs(geojson: string | null): [number, number][] | null {
@@ -56,15 +86,16 @@ function geofenceToLatLngs(geojson: string | null): [number, number][] | null {
   }
 }
 
-/** Read-only overview map for the dispatch board — every job with a site location shown as a pin
- * plus its geofence (drawn polygon, or the radius fallback circle when no polygon was drawn), so a
- * dispatcher can see the whole week's work — and exactly where clock-in/out is allowed — geographically. */
-export function JobsMap({ jobs }: { jobs: MapJob[] }) {
+/** One shared map for the whole dispatch board: every existing job shown as a pin with its
+ * geofence, and — when `picker` is supplied (creating a new job) — also click-to-draw for the new
+ * job's geofence, so there's a single map to look at instead of an overview map plus a separate
+ * picker map. */
+export function JobsMap({ jobs, picker }: { jobs: MapJob[]; picker?: MapPicker }) {
   const located = jobs.filter((j) => j.lat != null && j.lng != null);
 
   return (
-    <div className="h-80 overflow-hidden rounded-lg border border-slate-200">
-      <MapContainer center={DEFAULT_CENTER} zoom={11} className="h-full w-full">
+    <div className="h-96 overflow-hidden rounded-lg border border-slate-200">
+      <MapContainer center={picker?.siteLocation ?? DEFAULT_CENTER} zoom={picker?.siteLocation ? 17 : 11} className="h-full w-full">
         <TileLayer
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
@@ -93,6 +124,28 @@ export function JobsMap({ jobs }: { jobs: MapJob[] }) {
             </Fragment>
           );
         })}
+
+        {picker && (
+          <>
+            <RecenterOnPick location={picker.siteLocation} />
+            <ClickHandler onPick={(p) => picker.onPolygonChange([...picker.polygon, p])} />
+            {picker.siteLocation && (
+              <Marker
+                position={picker.siteLocation}
+                icon={L.divIcon({
+                  className: '',
+                  html: '<div style="width:16px;height:16px;border-radius:50%;background:#ea580c;border:2px solid white;box-shadow:0 0 0 2px #ea580c;"></div>',
+                  iconSize: [16, 16],
+                  iconAnchor: [8, 8],
+                })}
+              />
+            )}
+            {picker.siteLocation && picker.polygon.length === 0 && (
+              <Circle center={picker.siteLocation} radius={picker.radiusM} pathOptions={{ color: '#ea580c', dashArray: '4' }} />
+            )}
+            {picker.polygon.length >= 2 && <Polygon positions={picker.polygon} pathOptions={{ color: '#ea580c', dashArray: '4' }} />}
+          </>
+        )}
       </MapContainer>
     </div>
   );
