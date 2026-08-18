@@ -2,6 +2,7 @@ import { FormEvent, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api/client';
 import { useAuth } from '../context/AuthContext';
+import { GeofenceMapPicker, LatLng } from '../components/GeofenceMapPicker';
 
 interface Job {
   id: string;
@@ -107,25 +108,30 @@ function CreateJobForm() {
   const [form, setForm] = useState({
     jobNumber: '',
     title: '',
-    lat: '',
-    lng: '',
     geofenceRadiusM: '75',
     scheduledStart: '',
   });
+  const [siteLocation, setSiteLocation] = useState<LatLng | null>(null);
+  const [polygon, setPolygon] = useState<LatLng[]>([]);
 
   const createMutation = useMutation({
-    mutationFn: () =>
-      api.post('/jobs', {
+    mutationFn: () => {
+      if (!siteLocation) throw new Error('Click the map to set a site location first.');
+      return api.post('/jobs', {
         jobNumber: form.jobNumber,
         title: form.title,
-        siteLocation: { lat: Number(form.lat), lng: Number(form.lng) },
+        siteLocation,
         geofenceRadiusM: Number(form.geofenceRadiusM),
+        geofencePolygon: polygon.length >= 3 ? polygon : undefined,
         scheduledStart: form.scheduledStart ? new Date(form.scheduledStart).toISOString() : undefined,
         assigneeUserIds: [],
-      }),
+      });
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['jobs'] });
-      setForm({ jobNumber: '', title: '', lat: '', lng: '', geofenceRadiusM: '75', scheduledStart: '' });
+      setForm({ jobNumber: '', title: '', geofenceRadiusM: '75', scheduledStart: '' });
+      setSiteLocation(null);
+      setPolygon([]);
     },
   });
 
@@ -135,13 +141,42 @@ function CreateJobForm() {
   }
 
   return (
-    <form onSubmit={onSubmit} className="grid grid-cols-2 gap-3 rounded-lg border border-slate-200 bg-white p-4 md:grid-cols-6">
-      <input required placeholder="Job #" value={form.jobNumber} onChange={(e) => setForm({ ...form, jobNumber: e.target.value })} className="rounded-md border border-slate-300 px-3 py-2 text-sm md:col-span-1" />
-      <input required placeholder="Title" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} className="rounded-md border border-slate-300 px-3 py-2 text-sm md:col-span-2" />
-      <input required placeholder="Lat" value={form.lat} onChange={(e) => setForm({ ...form, lat: e.target.value })} className="rounded-md border border-slate-300 px-3 py-2 text-sm" />
-      <input required placeholder="Lng" value={form.lng} onChange={(e) => setForm({ ...form, lng: e.target.value })} className="rounded-md border border-slate-300 px-3 py-2 text-sm" />
-      <input type="datetime-local" value={form.scheduledStart} onChange={(e) => setForm({ ...form, scheduledStart: e.target.value })} className="rounded-md border border-slate-300 px-3 py-2 text-sm" />
-      <button type="submit" disabled={createMutation.isPending} className="rounded-md bg-brand-600 px-3 py-2 text-sm font-medium text-white hover:bg-brand-700">
+    <form onSubmit={onSubmit} className="space-y-3 rounded-lg border border-slate-200 bg-white p-4">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+        <input required placeholder="Job #" value={form.jobNumber} onChange={(e) => setForm({ ...form, jobNumber: e.target.value })} className="rounded-md border border-slate-300 px-3 py-2 text-sm md:col-span-1" />
+        <input required placeholder="Title" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} className="rounded-md border border-slate-300 px-3 py-2 text-sm md:col-span-2" />
+        <input type="datetime-local" value={form.scheduledStart} onChange={(e) => setForm({ ...form, scheduledStart: e.target.value })} className="rounded-md border border-slate-300 px-3 py-2 text-sm" />
+      </div>
+
+      <div className="flex items-center gap-2">
+        <label className="text-sm text-slate-600">Fallback radius (m)</label>
+        <input
+          type="number"
+          min={10}
+          value={form.geofenceRadiusM}
+          onChange={(e) => setForm({ ...form, geofenceRadiusM: e.target.value })}
+          className="w-24 rounded-md border border-slate-300 px-3 py-2 text-sm"
+        />
+        {siteLocation && (
+          <span className="text-xs text-slate-400">
+            Site: {siteLocation.lat.toFixed(5)}, {siteLocation.lng.toFixed(5)}
+          </span>
+        )}
+      </div>
+
+      <GeofenceMapPicker
+        siteLocation={siteLocation}
+        radiusM={Number(form.geofenceRadiusM) || 75}
+        polygon={polygon}
+        onSiteLocationChange={setSiteLocation}
+        onPolygonChange={setPolygon}
+      />
+
+      {createMutation.isError && (
+        <p className="text-sm text-red-600">{(createMutation.error as Error)?.message ?? 'Failed to create job.'}</p>
+      )}
+
+      <button type="submit" disabled={createMutation.isPending} className="rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700">
         {createMutation.isPending ? 'Creating…' : 'Create job'}
       </button>
     </form>

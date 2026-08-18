@@ -54,7 +54,23 @@ The Android client runs an offline point-in-polygon / haversine check (`Geofence
 for immediate UI feedback. The backend's `fn_point_in_job_geofence` PostGIS function is the
 authoritative check, run against `jobs.geofence` (drawn polygon) or `jobs.geofence_radius_m`
 (fallback circle) at clock-in/out time, and the result (`in_geofence`) is stored on the timecard
-row for payroll/compliance review.
+row for payroll/compliance review. The polygon takes precedence when both are set. Dispatchers draw
+the polygon on the web portal's job-creation form (`GeofenceMapPicker`, a Leaflet map) — click to
+set the site marker, click again in the other mode to lay down perimeter vertices; under 3 points
+falls back to the radius circle.
+
+## Verification note
+
+Most of this system was built and verified statically (type-checkers, unit tests, `gradle
+assembleDebug`) without a running Postgres/Docker available in the build environment. Once a local
+PostgreSQL 16 + PostGIS install became available, the core flows were exercised for real: login,
+job creation with both a radius and a hand-drawn polygon, clock-in/out with `fn_point_in_job_geofence`
+returning correct `true`/`false` for points inside/outside both geofence shapes, the money-to-hours
+generated columns, the additive inventory-ledger replay (`resolveAdditiveConflict`) across multiple
+adjustments, and full-text knowledge-base search with ranking and highlighted snippets. Not yet
+verified against a live stack: the Android app and web portal's actual UI in a browser/emulator,
+Socket.IO chat, and anything requiring Docker (object storage, the full `docker-compose.yml`) — this
+sandbox's Docker daemon does not run.
 
 ## Money-to-hours (feature 4)
 

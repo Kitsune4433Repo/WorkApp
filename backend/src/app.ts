@@ -1,7 +1,8 @@
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
-import rateLimit from 'express-rate-limit';
+import { Options as RateLimitOptions } from 'express-rate-limit';
+import { createApiRateLimiter } from './middleware/rateLimiter';
 import { authRouter } from './routes/auth';
 import { usersRouter } from './routes/users';
 import { jobsRouter } from './routes/jobs';
@@ -14,13 +15,13 @@ import { syncRouter } from './routes/sync';
 import { chatRouter } from './routes/chat';
 import { errorHandler, notFound } from './middleware/errorHandler';
 
-export function createApp() {
+export function createApp(options: { rateLimiterOptions?: Partial<RateLimitOptions> } = {}) {
   const app = express();
 
   app.use(helmet());
   app.use(cors());
   app.use(express.json({ limit: '2mb' }));
-  app.use(rateLimit({ windowMs: 60_000, max: 300 }));
+  app.use(createApiRateLimiter(options.rateLimiterOptions));
 
   app.get('/health', (_req, res) => res.json({ status: 'ok', time: new Date().toISOString() }));
 
