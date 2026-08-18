@@ -1,6 +1,7 @@
 import axios from 'axios';
+import { API_BASE_URL } from './config';
 
-export const api = axios.create({ baseURL: '/api' });
+export const api = axios.create({ baseURL: API_BASE_URL });
 
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem('accessToken');
@@ -20,7 +21,7 @@ api.interceptors.response.use(
       if (!refreshToken) throw error;
 
       refreshing ??= axios
-        .post('/api/auth/refresh', { refreshToken })
+        .post(`${API_BASE_URL}/auth/refresh`, { refreshToken })
         .then((r) => {
           localStorage.setItem('accessToken', r.data.access);
           localStorage.setItem('refreshToken', r.data.refresh);

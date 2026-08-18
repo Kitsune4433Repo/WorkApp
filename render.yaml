@@ -1,0 +1,86 @@
+# Render Blueprint — deploys the whole stack (Postgres + backend API + web portal) from this one
+# file. In the Render dashboard: New → Blueprint → connect this repo → Apply. No credentials need
+# to be shared with anyone else; Render reads this file directly from the repo.
+#
+# NOTE: this file has not been applied against a real Render account — I don't have one to test
+# with. The shape follows Render's documented Blueprint spec, but if a field name has changed
+# since my training data, the dashboard will flag it on "Apply" with a specific error, which is
+# easy to fix from there (or paste back to me).
+#
+# What you'll be asked to fill in by hand after the first deploy (Render can't infer these):
+#   - crew-management-api's OBJECT_STORE_* vars, if you want document/photo uploads to work —
+#     point them at a real S3-compatible bucket (Cloudflare R2, AWS S3, Backblaze B2, ...).
+#     Everything else (auth, jobs, inventory, timecards, chat, knowledge base) works without it.
+#   - crew-management-web's VITE_API_BASE_URL, ONLY if Render assigns crew-management-api a
+#     different subdomain than predicted below (happens if that name is already taken) — update
+#     it to match and trigger a redeploy of the web service.
+
+databases:
+  - name: crew-management-db
+    databaseName: crew_management
+    user: crew
+    plan: free
+    postgresMajorVersion: "16"
+
+services:
+  - type: web
+    name: crew-management-api
+    runtime: node
+    plan: free
+    rootDir: backend
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: crew-management-db
+          property: connectionString
+      - key: JWT_ACCESS_SECRET
+        generateValue: true
+      - key: JWT_REFRESH_SECRET
+        generateValue: true
+      - key: QR_TRANSFER_SECRET
+        generateValue: true
+      - key: JWT_ACCESS_TTL
+        value: 15m
+      - key: JWT_REFRESH_TTL
+        value: 30d
+      - key: GEOFENCE_DEFAULT_RADIUS_M
+        value: "75"
+      # First boot applies database/schema.sql + database/seed.sql automatically since a brand-new
+      # Render Postgres starts empty and there's no shell access to run `psql -f` by hand. See
+      # backend/src/db/bootstrap.ts. Demo accounts (all password "password123"): admin@crewops.dev,
+      # dispatch@crewops.dev, lead@crewops.dev, tech1@crewops.dev, tech2@crewops.dev.
+      - key: AUTO_MIGRATE
+        value: "true"
+      - key: SEED_DEMO_DATA
+        value: "true"
+      # Uploads (documents, maps, photo proofs) won't work until these point at a real
+      # S3-compatible bucket — fill in after deploy if you need that feature. Everything else works
+      # without them.
+      - key: OBJECT_STORE_BUCKET
+        value: crew-management-assets
+      - key: OBJECT_STORE_ENDPOINT
+        sync: false
+      - key: OBJECT_STORE_ACCESS_KEY
+        sync: false
+      - key: OBJECT_STORE_SECRET_KEY
+        sync: false
+
+  - type: web
+    name: crew-management-web
+    runtime: static
+    rootDir: web
+    buildCommand: npm ci && npm run build
+    staticPublishPath: dist
+    envVars:
+      # Predicted from crew-management-api's service name above — see the note at the top of this
+      # file if Render assigns it a different subdomain.
+      - key: VITE_API_BASE_URL
+        value: https://crew-management-api.onrender.com/api
+    routes:
+      # Client-side routing (React Router) — without this, refreshing on e.g. /inventory 404s.
+      - type: rewrite
+        source: /*
+        destination: /index.html

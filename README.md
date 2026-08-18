@@ -13,6 +13,36 @@ database/  PostgreSQL + PostGIS schema
 docs/      Architecture documentation
 ```
 
+## Deploy to Render (one click, no local setup)
+
+`render.yaml` at the repo root is a [Render Blueprint](https://render.com/docs/blueprint-spec) —
+it provisions everything (Postgres, the backend API, the web portal as a static site) from this
+one file, with no credentials shared with anyone else:
+
+1. Push/fork this repo to your own GitHub account (Render deploys from a repo you connect).
+2. On [render.com](https://render.com): **New → Blueprint**, connect the repo, **Apply**.
+3. Wait for all three resources to go live (a few minutes on first deploy — the free web service
+   tier also cold-starts after inactivity, so the first request after a quiet period is slow).
+4. Open the `crew-management-web` service's URL. Log in with `admin@crewops.dev` / `password123`
+   (seeded automatically on first boot — see `AUTO_MIGRATE`/`SEED_DEMO_DATA` below), then use the
+   **Users** page (admin-only) to create your own account instead of using the demo one.
+
+The database starts completely empty; `backend/src/db/bootstrap.ts` applies `database/schema.sql`
+(and `database/seed.sql`, for the demo accounts) automatically on the API's first boot — there's no
+shell access on Render to run `psql -f` by hand otherwise. This is gated behind `AUTO_MIGRATE`/
+`SEED_DEMO_DATA` env vars, both `true` in `render.yaml` for this convenience; leave them `false`
+(the default) for a real production deploy with real data.
+
+Document/photo uploads won't work until `crew-management-api`'s `OBJECT_STORE_*` env vars are
+pointed at a real S3-compatible bucket (Cloudflare R2, AWS S3, Backblaze B2, ...) — everything else
+(auth, jobs, inventory, timecards, chat, knowledge base) works without it. See the comments at the
+top of `render.yaml` for exactly what to fill in and why.
+
+I haven't been able to test `render.yaml` against a live Render account — I don't have one. If the
+dashboard rejects a field on "Apply", the error is specific and usually a one-line fix (paste it
+back to me, or check [Render's Blueprint docs](https://render.com/docs/blueprint-spec) for the
+current field name).
+
 ## Quick start (Docker Compose)
 
 Brings up PostGIS (seeded with demo users/materials/a job), MinIO as a local S3-compatible object

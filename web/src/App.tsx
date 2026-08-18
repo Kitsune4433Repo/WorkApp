@@ -9,6 +9,7 @@ import { ChatPage } from './pages/ChatPage';
 import { UploadCenter } from './pages/UploadCenter';
 import { KnowledgeBasePage } from './pages/KnowledgeBasePage';
 import { ConflictReviewPage } from './pages/ConflictReviewPage';
+import { UserManagementPage } from './pages/UserManagementPage';
 
 function RequireAuth({ children }: { children: JSX.Element }) {
   const { user } = useAuth();
@@ -41,6 +42,14 @@ export default function App() {
                   element={
                     <RequireRole roles={['admin', 'dispatcher']}>
                       <ConflictReviewPage />
+                    </RequireRole>
+                  }
+                />
+                <Route
+                  path="/users"
+                  element={
+                    <RequireRole roles={['admin']}>
+                      <UserManagementPage />
                     </RequireRole>
                   }
                 />

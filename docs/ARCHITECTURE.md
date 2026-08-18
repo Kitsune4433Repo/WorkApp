@@ -116,11 +116,17 @@ upsert's `ON CONFLICT` clause, so a later metadata refresh never forgets a file 
 ## Deployment shape
 
 - `database/schema.sql` is the canonical schema; `database/migrations/001_init.sql` applies it.
-  Add subsequent migrations as `NNN_description.sql` and run them in order.
+  Add subsequent migrations as `NNN_description.sql` and run them in order. `backend/src/db/
+  bootstrap.ts` can also apply it automatically on first boot (`AUTO_MIGRATE=true`) for hosts with
+  no shell access to a fresh managed Postgres — see `render.yaml` and the README's Render section.
 - `backend/` is stateless behind a load balancer; Socket.IO requires sticky sessions or a Redis
   adapter (`socket.io-redis`) once scaled beyond one instance.
-- `web/` builds to static assets (`npm run build`) served from any CDN/static host, calling the
-  same backend `/api`.
+- `web/` builds to static assets (`npm run build`) served from any CDN/static host. When the web
+  app and API are on different origins (e.g. two separate Render services), set `VITE_API_BASE_URL`
+  at build time — `web/src/api/config.ts` derives both the REST base URL and the Socket.IO origin
+  from it; it defaults to same-origin `/api` for the Vite dev proxy and docker-compose.
 - `android/` targets minSdk 26 (covers the 3 field devices); release builds should point
   `NetworkModule.BASE_URL` at the production API and enable certificate pinning in
   `network_security_config.xml` before rollout.
+- `render.yaml` is a ready-to-use Blueprint for Render specifically (Postgres + backend + static
+  web in one file); untested against a live Render account (I don't have one) — see the README.

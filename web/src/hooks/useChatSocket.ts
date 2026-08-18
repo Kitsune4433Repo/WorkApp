@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { io, Socket } from 'socket.io-client';
+import { SOCKET_ORIGIN } from '../api/config';
 
 export interface ChatMessage {
   id: string;
@@ -15,7 +16,7 @@ export function useChatSocket(channelId: string | null) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
 
   useEffect(() => {
-    const socket = io('/', { path: '/ws/chat', auth: { token: localStorage.getItem('accessToken') } });
+    const socket = io(SOCKET_ORIGIN, { path: '/ws/chat', auth: { token: localStorage.getItem('accessToken') } });
     socketRef.current = socket;
     return () => {
       socket.disconnect();

@@ -62,6 +62,18 @@ export function AppShell({ children }: { children: ReactNode }) {
               )}
             </NavLink>
           )}
+          {user?.role === 'admin' && (
+            <NavLink
+              to="/users"
+              className={({ isActive }) =>
+                `whitespace-nowrap rounded-md px-3 py-2 text-sm font-medium ${
+                  isActive ? 'bg-brand-50 text-brand-700' : 'text-slate-600 hover:bg-slate-100'
+                }`
+              }
+            >
+              Users
+            </NavLink>
+          )}
         </nav>
         <div className="mt-auto hidden pt-6 text-xs text-slate-500 md:block">
           <div className="font-medium text-slate-700">{user?.fullName}</div>
