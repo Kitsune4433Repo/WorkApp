@@ -40,6 +40,7 @@ const INCREMENTAL_MIGRATIONS = [
   'database/migrations/006_restock_requests.sql',
   'database/migrations/007_document_description.sql',
   'database/migrations/008_consolidate_roles.sql',
+  'database/migrations/009_reset_stale_sync_checkpoints.sql',
 ];
 
 export async function applyIncrementalMigrations(): Promise<void> {

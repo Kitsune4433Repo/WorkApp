@@ -38,8 +38,25 @@ class InventoryViewModel @Inject constructor(
 
     fun refresh() = repository.refresh()
 
-    fun addMaterial(name: String, category: String, unit: String) = viewModelScope.launch {
-        repository.addMaterial(name, category, unit)
+    var savingMaterial by mutableStateOf(false)
+        private set
+    var materialError by mutableStateOf<String?>(null)
+        private set
+
+    fun addMaterial(name: String, category: String, unit: String) {
+        savingMaterial = true
+        materialError = null
+        viewModelScope.launch {
+            try {
+                repository.addMaterial(name, category, unit)
+            } catch (e: retrofit2.HttpException) {
+                materialError = if (e.code() == 403) "Only admin/crew_lead can add materials." else "Failed to add material (${e.code()})."
+            } catch (e: java.io.IOException) {
+                materialError = "Can't reach the server. Check your connection."
+            } finally {
+                savingMaterial = false
+            }
+        }
     }
 }
 
@@ -56,7 +73,11 @@ fun InventoryScreen(viewModel: InventoryViewModel = hiltViewModel()) {
         Spacer(Modifier.height(12.dp))
 
         if (viewModel.canManageCatalog) {
-            AddMaterialForm(onAdd = { name, category, unit -> viewModel.addMaterial(name, category, unit) })
+            AddMaterialForm(
+                saving = viewModel.savingMaterial,
+                error = viewModel.materialError,
+                onAdd = { name, category, unit -> viewModel.addMaterial(name, category, unit) },
+            )
             Spacer(Modifier.height(12.dp))
         }
 
@@ -67,7 +88,7 @@ fun InventoryScreen(viewModel: InventoryViewModel = hiltViewModel()) {
 }
 
 @Composable
-private fun AddMaterialForm(onAdd: (name: String, category: String, unit: String) -> Unit) {
+private fun AddMaterialForm(saving: Boolean, error: String?, onAdd: (name: String, category: String, unit: String) -> Unit) {
     var expanded by remember { mutableStateOf(false) }
     var name by remember { mutableStateOf("") }
     var category by remember { mutableStateOf("") }
@@ -86,15 +107,19 @@ private fun AddMaterialForm(onAdd: (name: String, category: String, unit: String
                 OutlinedTextField(value = category, onValueChange = { category = it }, label = { Text("Category") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 Spacer(Modifier.height(8.dp))
                 OutlinedTextField(value = unit, onValueChange = { unit = it }, label = { Text("Unit (e.g. ea, spool, box)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                error?.let {
+                    Spacer(Modifier.height(4.dp))
+                    Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                }
                 Spacer(Modifier.height(8.dp))
                 Button(
                     onClick = {
                         onAdd(name.trim(), category.trim(), unit.trim().ifBlank { "unit" })
                         name = ""; category = ""; unit = "unit"; expanded = false
                     },
-                    enabled = name.isNotBlank() && category.isNotBlank(),
+                    enabled = !saving && name.isNotBlank() && category.isNotBlank(),
                     modifier = Modifier.align(androidx.compose.ui.Alignment.End),
-                ) { Text("Save") }
+                ) { Text(if (saving) "Saving…" else "Save") }
             }
         }
     }

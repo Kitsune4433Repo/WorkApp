@@ -18,6 +18,7 @@ import com.workapp.crew.data.local.entities.JobEntity
 import com.workapp.crew.data.repository.AuthRepository
 import com.workapp.crew.data.repository.JobRepository
 import com.workapp.crew.ui.util.PeriodicRefresh
+import com.workapp.crew.ui.util.rememberCurrentLocation
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.stateIn
@@ -28,6 +29,7 @@ import java.util.Locale
 import javax.inject.Inject
 
 private val JOB_MANAGE_ROLES = setOf("admin", "crew_lead")
+private val PRIORITIES = listOf("low", "medium", "high", "urgent")
 
 @HiltViewModel
 class JobBoardViewModel @Inject constructor(
@@ -41,6 +43,11 @@ class JobBoardViewModel @Inject constructor(
     private var busyJobId by mutableStateOf<String?>(null)
     val currentBusyJobId get() = busyJobId
 
+    var creatingJob by mutableStateOf(false)
+        private set
+    var createJobError by mutableStateOf<String?>(null)
+        private set
+
     fun refresh() = repository.refresh()
 
     fun startJob(jobId: String) = viewModelScope.launch {
@@ -52,21 +59,57 @@ class JobBoardViewModel @Inject constructor(
         busyJobId = jobId
         try { repository.stopJob(jobId) } finally { busyJobId = null }
     }
+
+    fun createJob(jobNumber: String, title: String, description: String?, priority: String, lat: Double, lng: Double, onDone: () -> Unit) {
+        creatingJob = true
+        createJobError = null
+        viewModelScope.launch {
+            try {
+                repository.create(jobNumber, title, description, priority, lat, lng)
+                onDone()
+            } catch (e: retrofit2.HttpException) {
+                createJobError = if (e.code() == 403) "Only admin/crew_lead can create jobs." else "Failed to create job (${e.code()})."
+            } catch (e: java.io.IOException) {
+                createJobError = "Can't reach the server. Check your connection."
+            } finally {
+                creatingJob = false
+            }
+        }
+    }
 }
 
-/** Job Board — mirrors web/src/pages/DispatcherDashboard.tsx's job list (creation/geofence drawing
- * stays on the web portal, which has the space for that form and a map). Reads the same local job
- * cache the offline map/geofence features already rely on. */
+/** Job Board — mirrors web/src/pages/DispatcherDashboard.tsx's job list plus creation (minus the
+ * geofence-polygon-drawing tool, which needs a map-drawing widget Android doesn't have yet — a job
+ * created here falls back to the server's default radius). Reads the same local job cache the
+ * offline map/geofence features already rely on. */
 @Composable
 fun JobBoardScreen(viewModel: JobBoardViewModel = hiltViewModel()) {
     val jobs by viewModel.jobs.collectAsState()
     PeriodicRefresh { viewModel.refresh() }
+    var showCreate by remember { mutableStateOf(false) }
 
     Column(Modifier.fillMaxSize().padding(16.dp)) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             Text("Job Board", style = MaterialTheme.typography.headlineSmall)
-            IconButton(onClick = { viewModel.refresh() }) { Icon(Icons.Filled.Refresh, contentDescription = "Refresh") }
+            Row {
+                if (viewModel.canManageJobs) {
+                    TextButton(onClick = { showCreate = !showCreate }) { Text(if (showCreate) "Cancel" else "+ New job") }
+                }
+                IconButton(onClick = { viewModel.refresh() }) { Icon(Icons.Filled.Refresh, contentDescription = "Refresh") }
+            }
         }
+
+        if (showCreate) {
+            Spacer(Modifier.height(8.dp))
+            CreateJobForm(
+                saving = viewModel.creatingJob,
+                error = viewModel.createJobError,
+                onCreate = { jobNumber, title, description, priority, lat, lng ->
+                    viewModel.createJob(jobNumber, title, description, priority, lat, lng) { showCreate = false }
+                },
+            )
+        }
+
         Spacer(Modifier.height(12.dp))
         if (jobs.isEmpty()) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -84,6 +127,58 @@ fun JobBoardScreen(viewModel: JobBoardViewModel = hiltViewModel()) {
                     )
                 }
             }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun CreateJobForm(
+    saving: Boolean,
+    error: String?,
+    onCreate: (jobNumber: String, title: String, description: String?, priority: String, lat: Double, lng: Double) -> Unit,
+) {
+    val location = rememberCurrentLocation()
+    var jobNumber by remember { mutableStateOf("") }
+    var title by remember { mutableStateOf("") }
+    var description by remember { mutableStateOf("") }
+    var priority by remember { mutableStateOf("medium") }
+    var priorityMenuExpanded by remember { mutableStateOf(false) }
+
+    ElevatedCard(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("New job", style = MaterialTheme.typography.titleSmall)
+            OutlinedTextField(value = jobNumber, onValueChange = { jobNumber = it }, label = { Text("Job #") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(value = title, onValueChange = { title = it }, label = { Text("Title") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(value = description, onValueChange = { description = it }, label = { Text("Description (optional)") }, modifier = Modifier.fillMaxWidth())
+
+            ExposedDropdownMenuBox(expanded = priorityMenuExpanded, onExpandedChange = { priorityMenuExpanded = it }) {
+                OutlinedTextField(
+                    value = priority.replaceFirstChar { it.uppercase() },
+                    onValueChange = {},
+                    readOnly = true,
+                    label = { Text("Priority") },
+                    modifier = Modifier.menuAnchor().fillMaxWidth(),
+                )
+                ExposedDropdownMenu(expanded = priorityMenuExpanded, onDismissRequest = { priorityMenuExpanded = false }) {
+                    PRIORITIES.forEach { p ->
+                        DropdownMenuItem(text = { Text(p.replaceFirstChar { c -> c.uppercase() }) }, onClick = { priority = p; priorityMenuExpanded = false })
+                    }
+                }
+            }
+
+            Text(
+                if (location != null) "Site location: current GPS position" else "Getting your location…",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
+
+            Button(
+                onClick = { location?.let { (lat, lng) -> onCreate(jobNumber.trim(), title.trim(), description.trim().ifBlank { null }, priority, lat, lng) } },
+                enabled = !saving && location != null && jobNumber.isNotBlank() && title.isNotBlank(),
+                modifier = Modifier.align(Alignment.End),
+            ) { Text(if (saving) "Creating…" else "Create job") }
         }
     }
 }

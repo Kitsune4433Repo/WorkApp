@@ -16,11 +16,14 @@ import com.workapp.crew.data.local.entities.ChatChannelEntity
 import com.workapp.crew.data.local.entities.ChatMessageEntity
 import com.workapp.crew.data.repository.AuthRepository
 import com.workapp.crew.data.repository.ChatRepository
+import com.workapp.crew.ui.util.PeriodicRefresh
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import javax.inject.Inject
+
+private val ROOM_CREATE_ROLES = setOf("admin")
 
 @HiltViewModel
 class ChatViewModel @Inject constructor(
@@ -28,8 +31,14 @@ class ChatViewModel @Inject constructor(
     private val authRepository: AuthRepository,
 ) : ViewModel() {
     val currentUserId = authRepository.currentUserId
+    val canCreateRoom = authRepository.currentRole in ROOM_CREATE_ROLES
 
     val channels = repository.observeChannels().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    var creatingRoom by mutableStateOf(false)
+        private set
+    var createRoomError by mutableStateOf<String?>(null)
+        private set
 
     private val activeChannelId = MutableStateFlow<String?>(null)
 
@@ -44,6 +53,25 @@ class ChatViewModel @Inject constructor(
         currentUserId?.let { userId ->
             viewModelScope.launch {
                 repository.observeIncomingMessages(userId).collect { /* Room flow already reactive */ }
+            }
+        }
+    }
+
+    fun refreshChannels() = viewModelScope.launch { repository.refreshChannels() }
+
+    fun createRoom(name: String, onDone: (channelId: String) -> Unit) {
+        creatingRoom = true
+        createRoomError = null
+        viewModelScope.launch {
+            try {
+                val id = repository.createBroadcastRoom(name)
+                onDone(id)
+            } catch (e: retrofit2.HttpException) {
+                createRoomError = if (e.code() == 403) "Only admins can create rooms." else "Failed to create room (${e.code()})."
+            } catch (e: java.io.IOException) {
+                createRoomError = "Can't reach the server. Check your connection."
+            } finally {
+                creatingRoom = false
             }
         }
     }
@@ -74,17 +102,29 @@ fun ChatScreen(viewModel: ChatViewModel = hiltViewModel()) {
     val messages by viewModel.messages.collectAsState()
     var activeChannelId by remember { mutableStateOf<String?>(null) }
     var draft by remember { mutableStateOf("") }
+    // The channel list has no live push of its own (only messages ride the socket) — poll so a
+    // room an admin creates elsewhere shows up here without restarting the screen.
+    PeriodicRefresh { viewModel.refreshChannels() }
 
     Row(Modifier.fillMaxSize()) {
-        LazyColumn(Modifier.width(120.dp).fillMaxHeight().padding(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            items(channels, key = { it.id }) { channel ->
-                ChannelChip(
-                    channel = channel,
-                    selected = activeChannelId == channel.id,
-                    onClick = {
-                        activeChannelId = channel.id
-                        viewModel.selectChannel(channel.id)
-                    },
+        Column(Modifier.width(140.dp).fillMaxHeight().padding(8.dp)) {
+            LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                items(channels, key = { it.id }) { channel ->
+                    ChannelChip(
+                        channel = channel,
+                        selected = activeChannelId == channel.id,
+                        onClick = {
+                            activeChannelId = channel.id
+                            viewModel.selectChannel(channel.id)
+                        },
+                    )
+                }
+            }
+            if (viewModel.canCreateRoom) {
+                CreateRoomControl(
+                    saving = viewModel.creatingRoom,
+                    error = viewModel.createRoomError,
+                    onCreate = { name -> viewModel.createRoom(name) { id -> activeChannelId = id; viewModel.selectChannel(id) } },
                 )
             }
         }
@@ -119,6 +159,34 @@ fun ChatScreen(viewModel: ChatViewModel = hiltViewModel()) {
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun CreateRoomControl(saving: Boolean, error: String?, onCreate: (name: String) -> Unit) {
+    var expanded by remember { mutableStateOf(false) }
+    var name by remember { mutableStateOf("") }
+
+    Column(Modifier.fillMaxWidth().padding(top = 8.dp)) {
+        if (expanded) {
+            OutlinedTextField(
+                value = name,
+                onValueChange = { name = it },
+                placeholder = { Text("Room name") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
+            Row(Modifier.padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                TextButton(
+                    onClick = { onCreate(name.trim()); name = ""; expanded = false },
+                    enabled = !saving && name.isNotBlank(),
+                ) { Text(if (saving) "Creating…" else "Create") }
+                TextButton(onClick = { expanded = false }) { Text("Cancel") }
+            }
+        } else {
+            TextButton(onClick = { expanded = true }) { Text("+ New room") }
         }
     }
 }

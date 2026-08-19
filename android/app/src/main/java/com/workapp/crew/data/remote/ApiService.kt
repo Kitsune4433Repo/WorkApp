@@ -18,6 +18,11 @@ data class JobDto(
     val priority: String, val lat: Double, val lng: Double,
     val scheduled_start: String?, val scheduled_end: String?, val crew_id: String?,
 )
+data class CreateJobRequest(
+    val jobNumber: String, val title: String, val description: String?,
+    val priority: String, val siteLocation: LatLngDto,
+)
+data class CreateJobResponse(val id: String)
 
 // quantity_have (NUMERIC) and version (BIGINT) are serialized as JSON strings by the backend —
 // same pattern as RestockItemDto.quantity_needed below; parsed at the point of use in
@@ -135,6 +140,9 @@ interface ApiService {
 
     @GET("jobs")
     suspend fun getJobs(): List<JobDto>
+
+    @POST("jobs")
+    suspend fun createJob(@Body body: CreateJobRequest): CreateJobResponse
 
     @GET("inventory/have/{userId}")
     suspend fun getHaveLedger(@Path("userId") userId: String): List<HaveRowDto>

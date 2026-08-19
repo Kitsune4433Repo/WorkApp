@@ -5,6 +5,7 @@ import com.workapp.crew.data.local.entities.ChatChannelEntity
 import com.workapp.crew.data.local.entities.ChatMessageEntity
 import com.workapp.crew.data.remote.ApiService
 import com.workapp.crew.data.remote.AuthTokenStore
+import com.workapp.crew.data.remote.CreateChannelRequest
 import com.workapp.crew.di.SOCKET_ORIGIN
 import io.socket.client.Ack
 import io.socket.client.IO
@@ -90,6 +91,14 @@ class ChatRepository @Inject constructor(
     suspend fun refreshChannels() {
         val channels = api.getChatChannels()
         dao.upsertChannels(channels.map { ChatChannelEntity(id = it.id, type = it.type, name = it.name, jobId = it.job_id) })
+    }
+
+    /** Admin-only (enforced server-side): an open "broadcast" room every user — present and
+     * future — can see and post in, matching web's "+ New room (everyone)". */
+    suspend fun createBroadcastRoom(name: String): String {
+        val response = api.createChatChannel(CreateChannelRequest(type = "broadcast", name = name, jobId = null, memberUserIds = emptyList()))
+        refreshChannels()
+        return response.id
     }
 
     fun observeChannels() = dao.observeChannels()

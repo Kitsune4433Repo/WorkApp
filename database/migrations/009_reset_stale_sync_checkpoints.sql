@@ -1,0 +1,16 @@
+-- One-time corrective reset. Several earlier bugs this session (a stale placeholder API domain, a
+-- single failing sync step silently blocking every step listed after it, nothing triggering a sync
+-- on login) meant a device could hit GET /sync/pull/:entityType successfully — which unconditionally
+-- advances that device's "since" checkpoint on the server — even when the returned rows never
+-- actually made it into the device's local database (the local write failed after the HTTP request
+-- already succeeded, or a role-based filter wrongly excluded rows that were later un-excluded).
+-- Once the checkpoint moves past a row's updated_at, that row is permanently invisible to future
+-- incremental pulls for that device, even after the underlying bug is fixed — the device just never
+-- asks for it again.
+--
+-- Wiping checkpoints forces one full re-pull per device/entity type on next sync, which fully
+-- recovers from any of the above. Self-limiting via a fixed cutoff (rather than an unconditional
+-- DELETE) so this is a real no-op on every boot after the first: this file re-runs on every backend
+-- start, and once fresh checkpoints replace the wiped ones, none of them will ever again be older
+-- than a cutoff fixed at authoring time.
+DELETE FROM sync_checkpoints WHERE last_synced_at < '2026-08-19T05:00:00Z';

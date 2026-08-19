@@ -14,6 +14,7 @@ import com.workapp.crew.data.local.entities.JobEntity
 import com.workapp.crew.data.repository.AuthRepository
 import com.workapp.crew.data.repository.LiveEarnings
 import com.workapp.crew.data.repository.TimecardRepository
+import com.workapp.crew.ui.util.rememberCurrentLocation
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.map
@@ -70,8 +71,8 @@ fun ClockInScreen(viewModel: ClockInViewModel = hiltViewModel()) {
             Text("$${"%.2f".format(e.earningsCents / 100.0)}", style = MaterialTheme.typography.displayMedium)
             Text("${e.activeMinutes / 60}h ${e.activeMinutes % 60}m active${if (e.onBreak) " (on break)" else ""}")
             Spacer(Modifier.height(24.dp))
-            Button(onClick = { location?.let { viewModel.clockOut(it.first, it.second) } }) {
-                Text("Clock out")
+            Button(onClick = { location?.let { viewModel.clockOut(it.first, it.second) } }, enabled = location != null) {
+                Text(if (location != null) "Clock out" else "Getting your location…")
             }
         } else {
             ExposedDropdownMenuBox(expanded = dropdownExpanded, onExpandedChange = { dropdownExpanded = it }) {
@@ -101,19 +102,9 @@ fun ClockInScreen(viewModel: ClockInViewModel = hiltViewModel()) {
                 )
             }
             Spacer(Modifier.height(16.dp))
-            Button(onClick = { location?.let { viewModel.clockIn(selectedJob?.id, it.first, it.second) } }) {
-                Text("Clock in")
+            Button(onClick = { location?.let { viewModel.clockIn(selectedJob?.id, it.first, it.second) } }, enabled = location != null) {
+                Text(if (location != null) "Clock in" else "Getting your location…")
             }
         }
     }
-}
-
-/** Placeholder for a FusedLocationProviderClient-backed current-location holder used across screens. */
-@Composable
-private fun rememberCurrentLocation(): Pair<Double, Double>? {
-    var location by remember { mutableStateOf<Pair<Double, Double>?>(null) }
-    // Real implementation requests a single high-accuracy fix via FusedLocationProviderClient
-    // (see LocationTrackingService for the equivalent background-tracking setup) and updates
-    // `location` once resolved, guarded by the ACCESS_FINE_LOCATION runtime permission.
-    return location
 }
