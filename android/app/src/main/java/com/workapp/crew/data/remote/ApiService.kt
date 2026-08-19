@@ -68,6 +68,56 @@ data class ChatMessageRemoteDto(
     val id: String, val sender_id: String, val body: String?, val attachment_url: String?, val sent_at: String,
 )
 
+// --- Out Of Inventory (restock requests) -------------------------------------
+// quantity_needed is NUMERIC on the backend, which Postgres/node-pg serializes as a JSON string —
+// declared String here and parsed at the point of use, same pattern as the web app's Number(...)
+// coercion fix for the same column.
+data class RestockItemDto(
+    val id: String, val material_id: String?, val item_name: String, val unit: String,
+    val quantity_needed: String, val note: String?, val requested_by: String?, val created_at: String,
+)
+data class CreateRestockRequest(val itemName: String, val unit: String, val quantityNeeded: Double, val note: String?)
+data class CreateRestockResponse(val id: String)
+data class UpdateRestockRequest(val quantityNeeded: Double? = null, val note: String? = null)
+
+// --- Payroll -------------------------------------------------------------------
+// earnings_cents / total_wage_cents are BIGINT on the backend — same string-serialization issue as
+// above. total_minutes / days_worked are INTEGER and arrive as real JSON numbers.
+data class PersonPeriodTotalsDto(
+    val user_id: String?, val full_name: String?, val user_full_name_snapshot: String?,
+    val days_worked: Int, val total_minutes: Int, val earnings_cents: String,
+)
+data class YmdDto(val year: Int, val month: Int, val day: Int)
+data class WeeklySummaryDto(
+    val periodStart: YmdDto, val periodEnd: YmdDto, val label: String,
+    val people: List<PersonPeriodTotalsDto>, val totalWageCents: Long,
+)
+data class PayrollPeriodDto(
+    val id: String, val period_start: String, val period_end: String, val label: String,
+    val total_wage_cents: String, val finalized_at: String,
+)
+data class PayrollPeriodDetailDto(
+    val id: String, val period_start: String, val period_end: String, val label: String,
+    val total_wage_cents: String, val finalized_at: String, val people: List<PersonPeriodTotalsDto>,
+)
+
+// --- Sync conflicts --------------------------------------------------------------
+data class SyncConflictDto(
+    val id: String, val entity_type: String, val entity_id: String, val device_id: String,
+    val user_id: String?, val client_payload: Any?, val server_payload: Any?,
+    val client_version: String, val server_version: String, val created_at: String,
+)
+data class ResolveConflictRequest(val resolution: String, val resolvedPayload: Any? = null)
+
+// --- Users (admin) --------------------------------------------------------------
+data class UserListItemDto(
+    val id: String, val email: String, val full_name: String, val role: String,
+    val phone: String?, val hourly_rate_cents: Int, val is_active: Boolean,
+)
+data class CreateUserRequest(val email: String, val password: String, val fullName: String, val role: String, val hourlyRateCents: Int)
+data class CreateUserResponse(val id: String, val email: String)
+data class SetUserActiveRequest(val isActive: Boolean)
+
 interface ApiService {
     @POST("auth/login")
     suspend fun login(@Body body: LoginRequest): AuthTokens
@@ -137,4 +187,49 @@ interface ApiService {
 
     @GET("chat/channels/{channelId}/messages")
     suspend fun getChatMessages(@Path("channelId") channelId: String, @Query("before") before: String? = null): List<ChatMessageRemoteDto>
+
+    @POST("jobs/{jobId}/start")
+    suspend fun startJob(@Path("jobId") jobId: String)
+
+    @POST("jobs/{jobId}/stop")
+    suspend fun stopJob(@Path("jobId") jobId: String)
+
+    @GET("inventory/restock")
+    suspend fun getRestockRequests(): List<RestockItemDto>
+
+    @POST("inventory/restock")
+    suspend fun createRestockRequest(@Body body: CreateRestockRequest): CreateRestockResponse
+
+    @PATCH("inventory/restock/{id}")
+    suspend fun updateRestockRequest(@Path("id") id: String, @Body body: UpdateRestockRequest)
+
+    @DELETE("inventory/restock/{id}")
+    suspend fun deleteRestockRequest(@Path("id") id: String)
+
+    @GET("timecards/weekly-summary")
+    suspend fun getWeeklySummary(): WeeklySummaryDto
+
+    @GET("timecards/payroll-periods")
+    suspend fun getPayrollPeriods(): List<PayrollPeriodDto>
+
+    @GET("timecards/payroll-periods/{id}")
+    suspend fun getPayrollPeriodDetail(@Path("id") id: String): PayrollPeriodDetailDto
+
+    @GET("sync/conflicts")
+    suspend fun getConflicts(): List<SyncConflictDto>
+
+    @POST("sync/conflicts/{id}/resolve")
+    suspend fun resolveConflict(@Path("id") id: String, @Body body: ResolveConflictRequest)
+
+    @GET("users")
+    suspend fun getUsers(): List<UserListItemDto>
+
+    @POST("users")
+    suspend fun createUser(@Body body: CreateUserRequest): CreateUserResponse
+
+    @PATCH("users/{id}")
+    suspend fun setUserActive(@Path("id") id: String, @Body body: SetUserActiveRequest)
+
+    @DELETE("users/{id}")
+    suspend fun deleteUser(@Path("id") id: String)
 }
