@@ -69,7 +69,7 @@ fun InventoryScreen(viewModel: InventoryViewModel = hiltViewModel()) {
     PeriodicRefresh { viewModel.refresh() }
 
     Column(Modifier.fillMaxSize().padding(16.dp)) {
-        Text("Truck Inventory", style = MaterialTheme.typography.headlineSmall)
+        Text("Materials Inventory", style = MaterialTheme.typography.headlineSmall)
         Spacer(Modifier.height(12.dp))
 
         if (viewModel.canManageCatalog) {
