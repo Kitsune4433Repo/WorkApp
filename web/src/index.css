@@ -1,3 +1,10 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* Soft Focus: headings carry the Fraunces serif, body text stays on the sans (Figtree) default. */
+h1,
+h2,
+h3 {
+  font-family: 'Fraunces', Georgia, serif;
+}
