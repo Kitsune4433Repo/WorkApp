@@ -15,6 +15,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.workapp.crew.data.local.dao.HaveLedgerRow
 import com.workapp.crew.data.repository.InventoryRepository
+import com.workapp.crew.ui.util.PeriodicRefresh
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.stateIn
@@ -26,12 +27,15 @@ class InventoryViewModel @Inject constructor(private val repository: InventoryRe
     val haveLedger = repository.observeHaveLedger().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     fun adjust(materialId: String, delta: Double) = viewModelScope.launch { repository.adjust(materialId, delta, jobId = null) }
+
+    fun refresh() = repository.refresh()
 }
 
 /** Feature 1: work material ledger with instant plus/minus controls. */
 @Composable
 fun InventoryScreen(viewModel: InventoryViewModel = hiltViewModel()) {
     val items by viewModel.haveLedger.collectAsState()
+    PeriodicRefresh { viewModel.refresh() }
 
     Column(Modifier.fillMaxSize().padding(16.dp)) {
         Text("Truck Inventory", style = MaterialTheme.typography.headlineSmall)

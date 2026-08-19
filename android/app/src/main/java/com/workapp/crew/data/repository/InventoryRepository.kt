@@ -22,6 +22,10 @@ class InventoryRepository @Inject constructor(
 ) {
     fun observeHaveLedger() = dao.observeHaveLedger()
 
+    /** Pulls the server-authoritative have ledger (see SyncWorker.pullHaveLedger) so changes made
+     * elsewhere — the website, another phone — show up here without a manual restart. */
+    fun refresh() = SyncWorker.triggerImmediateSync(context)
+
     /**
      * Feature 1: plus/minus adjustment. Writes to the local ledger instantly for a responsive UI,
      * then lets SyncWorker replay it against the server's append-only transaction log — so two

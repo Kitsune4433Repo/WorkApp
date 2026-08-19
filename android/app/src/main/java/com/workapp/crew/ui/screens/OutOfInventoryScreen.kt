@@ -16,6 +16,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.workapp.crew.data.remote.RestockItemDto
 import com.workapp.crew.data.repository.RestockRepository
+import com.workapp.crew.ui.util.PeriodicRefresh
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -61,6 +62,7 @@ class OutOfInventoryViewModel @Inject constructor(private val repository: Restoc
 fun OutOfInventoryScreen(viewModel: OutOfInventoryViewModel = hiltViewModel()) {
     val items by viewModel.items.collectAsState()
     var newItemName by remember { mutableStateOf("") }
+    PeriodicRefresh { viewModel.refresh() }
 
     Column(Modifier.fillMaxSize().padding(16.dp)) {
         Text("Out Of Inventory", style = MaterialTheme.typography.headlineSmall)

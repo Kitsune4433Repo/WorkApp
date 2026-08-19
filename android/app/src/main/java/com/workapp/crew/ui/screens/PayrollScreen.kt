@@ -16,6 +16,7 @@ import com.workapp.crew.data.remote.PayrollPeriodDto
 import com.workapp.crew.data.remote.PersonPeriodTotalsDto
 import com.workapp.crew.data.remote.WeeklySummaryDto
 import com.workapp.crew.data.repository.PayrollRepository
+import com.workapp.crew.ui.util.PeriodicRefresh
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -34,9 +35,12 @@ class PayrollViewModel @Inject constructor(private val repository: PayrollReposi
     private val _selected = MutableStateFlow<PayrollPeriodDetailDto?>(null)
     val selected: StateFlow<PayrollPeriodDetailDto?> = _selected.asStateFlow()
 
-    init {
+    init { refresh() }
+
+    fun refresh() {
         viewModelScope.launch { _current.value = repository.weeklySummary() }
         viewModelScope.launch { _periods.value = repository.periods() }
+        _selected.value?.let { selectPeriod(it.id) }
     }
 
     fun selectPeriod(id: String?) = viewModelScope.launch {
@@ -57,6 +61,7 @@ fun PayrollScreen(viewModel: PayrollViewModel = hiltViewModel()) {
     val periods by viewModel.periods.collectAsState()
     val selected by viewModel.selected.collectAsState()
     var selectedId by remember { mutableStateOf<String?>(null) }
+    PeriodicRefresh { viewModel.refresh() }
 
     Column(Modifier.fillMaxSize().padding(16.dp)) {
         Text("Payroll", style = MaterialTheme.typography.headlineSmall)

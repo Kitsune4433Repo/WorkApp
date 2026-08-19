@@ -13,6 +13,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.workapp.crew.data.remote.SyncConflictDto
 import com.workapp.crew.data.repository.ConflictsRepository
+import com.workapp.crew.ui.util.PeriodicRefresh
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -40,6 +41,7 @@ class ConflictsViewModel @Inject constructor(private val repository: ConflictsRe
 @Composable
 fun ConflictsScreen(viewModel: ConflictsViewModel = hiltViewModel()) {
     val conflicts by viewModel.conflicts.collectAsState()
+    PeriodicRefresh { viewModel.refresh() }
 
     Column(Modifier.fillMaxSize().padding(16.dp)) {
         Text("Conflicts", style = MaterialTheme.typography.headlineSmall)

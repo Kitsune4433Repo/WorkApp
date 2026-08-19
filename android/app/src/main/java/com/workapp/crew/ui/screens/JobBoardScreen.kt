@@ -17,6 +17,7 @@ import androidx.lifecycle.viewModelScope
 import com.workapp.crew.data.local.entities.JobEntity
 import com.workapp.crew.data.repository.AuthRepository
 import com.workapp.crew.data.repository.JobRepository
+import com.workapp.crew.ui.util.PeriodicRefresh
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.stateIn
@@ -59,6 +60,7 @@ class JobBoardViewModel @Inject constructor(
 @Composable
 fun JobBoardScreen(viewModel: JobBoardViewModel = hiltViewModel()) {
     val jobs by viewModel.jobs.collectAsState()
+    PeriodicRefresh { viewModel.refresh() }
 
     Column(Modifier.fillMaxSize().padding(16.dp)) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {

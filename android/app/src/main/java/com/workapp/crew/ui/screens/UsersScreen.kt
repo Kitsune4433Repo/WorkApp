@@ -13,6 +13,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.workapp.crew.data.remote.UserListItemDto
 import com.workapp.crew.data.repository.UsersRepository
+import com.workapp.crew.ui.util.PeriodicRefresh
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -54,6 +55,7 @@ class UsersViewModel @Inject constructor(private val repository: UsersRepository
 fun UsersScreen(viewModel: UsersViewModel = hiltViewModel()) {
     val users by viewModel.users.collectAsState()
     var showCreate by remember { mutableStateOf(false) }
+    PeriodicRefresh { viewModel.refresh() }
 
     Column(Modifier.fillMaxSize().padding(16.dp)) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {

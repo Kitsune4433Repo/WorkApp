@@ -19,7 +19,10 @@ data class JobDto(
     val scheduled_start: String?, val scheduled_end: String?, val crew_id: String?,
 )
 
-data class HaveRowDto(val material_id: String, val sku: String, val name: String, val unit: String, val quantity_have: Double, val version: Long)
+// quantity_have (NUMERIC) and version (BIGINT) are serialized as JSON strings by the backend —
+// same pattern as RestockItemDto.quantity_needed below; parsed at the point of use in
+// SyncWorker.pullHaveLedger().
+data class HaveRowDto(val material_id: String, val sku: String, val name: String, val unit: String, val quantity_have: String, val version: String)
 data class AdjustInventoryRequest(val materialId: String, val delta: Double, val jobId: String?, val clientTxnId: String, val occurredAt: String)
 data class AdjustInventoryResponse(val materialId: String, val quantityHave: Double)
 

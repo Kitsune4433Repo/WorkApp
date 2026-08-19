@@ -56,6 +56,7 @@ class SyncWorker @AssistedInject constructor(
             pullMaterials()
             pullJobs()
             pullDocuments()
+            pullHaveLedger()
             Result.success()
         } catch (e: Exception) {
             // Network/5xx failures retry with WorkManager's backoff; validation errors (4xx) would
@@ -235,6 +236,25 @@ class SyncWorker @AssistedInject constructor(
                 isMap = dto.is_map,
                 currentVersion = dto.current_version,
                 updatedAt = parseIsoMillis(dto.updated_at) ?: System.currentTimeMillis(),
+            )
+        }
+    }
+
+    /** Cross-device sync: the local Have ledger otherwise only reflects changes made on *this*
+     * device (deltas + QR claims) — this pulls the same server-authoritative balance the web app's
+     * Material Ledger reads, so a change made on the website or another phone shows up here too.
+     * truck_inventory.quantityHave becomes the confirmed-server balance; observeHaveLedger() then
+     * layers any not-yet-synced local deltas on top of it, same as it already does after a push. */
+    private suspend fun pullHaveLedger() {
+        val userId = tokenStore.userId ?: return
+        for (row in api.getHaveLedger(userId)) {
+            inventoryDao.upsertBalance(
+                com.workapp.crew.data.local.entities.TruckInventoryEntity(
+                    materialId = row.material_id,
+                    quantityHave = row.quantity_have.toDoubleOrNull() ?: 0.0,
+                    version = row.version.toLongOrNull() ?: 0,
+                    updatedAt = System.currentTimeMillis(),
+                ),
             )
         }
     }
