@@ -31,9 +31,14 @@ export function OutOfInventoryPage() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['inventory', 'restock'] }),
   });
 
-  const removeMutation = useMutation({
-    mutationFn: (id: string) => api.delete(`/inventory/restock/${id}`),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['inventory', 'restock'] }),
+  // "Restocked" used to just clear the request — the material never actually landed anywhere.
+  // Now it credits the quantity to whoever's fulfilling it, so it shows up in their Material Ledger.
+  const fulfillMutation = useMutation({
+    mutationFn: (id: string) => api.post(`/inventory/restock/${id}/fulfill`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['inventory', 'restock'] });
+      queryClient.invalidateQueries({ queryKey: ['inventory', 'have'] });
+    },
   });
 
   return (
@@ -49,8 +54,8 @@ export function OutOfInventoryPage() {
             key={item.id}
             item={item}
             onSetQuantity={(quantityNeeded) => updateMutation.mutate({ id: item.id, quantityNeeded })}
-            onRemove={() => removeMutation.mutate(item.id)}
-            removing={removeMutation.isPending}
+            onRestocked={() => fulfillMutation.mutate(item.id)}
+            restocking={fulfillMutation.isPending}
           />
         ))}
         {!items?.length && <p className="text-slate-400">Nothing flagged as out of stock.</p>}
@@ -64,21 +69,22 @@ export function OutOfInventoryPage() {
 function RestockRow({
   item,
   onSetQuantity,
-  onRemove,
-  removing,
+  onRestocked,
+  restocking,
 }: {
   item: RestockItem;
   onSetQuantity: (quantity: number) => void;
-  onRemove: () => void;
-  removing: boolean;
+  onRestocked: () => void;
+  restocking: boolean;
 }) {
   return (
     <div className="rounded-lg border border-slate-200 bg-white p-4">
       <div className="flex items-start justify-between">
         <div className="font-medium text-slate-900">{item.item_name}</div>
         <button
-          onClick={onRemove}
-          disabled={removing}
+          onClick={onRestocked}
+          disabled={restocking}
+          title="Adds this quantity to your Material Ledger and clears the request"
           className="rounded-md border border-green-300 px-2 py-1 text-xs font-medium text-green-700 hover:bg-green-50"
         >
           Restocked

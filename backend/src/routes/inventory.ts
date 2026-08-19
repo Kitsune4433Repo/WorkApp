@@ -326,3 +326,58 @@ inventoryRouter.delete(
     res.status(204).end();
   }),
 );
+
+// Marks a request restocked AND actually credits the material to whoever's fulfilling it — a plain
+// delete (the old "Restocked" behavior) resolved the request but the material never landed
+// anywhere. If the request wasn't linked to a real catalog material (the add-request form is
+// free-text), auto-creates one so the credit has somewhere to go.
+inventoryRouter.post(
+  '/restock/:id/fulfill',
+  asyncHandler(async (req, res) => {
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const { rows: requestRows } = await client.query(
+        `SELECT id, material_id, item_name, unit, quantity_needed FROM restock_requests WHERE id = $1 FOR UPDATE`,
+        [req.params.id],
+      );
+      if (!requestRows.length) throw new ApiError(404, 'restock_request_not_found');
+      const request = requestRows[0];
+
+      let materialId = request.material_id as string | null;
+      if (!materialId) {
+        const { rows: existingMaterial } = await client.query(
+          `SELECT id FROM material_catalog WHERE is_active AND name ILIKE $1 LIMIT 1`,
+          [request.item_name],
+        );
+        if (existingMaterial.length) {
+          materialId = existingMaterial[0].id;
+        } else {
+          const { rows: newMaterial } = await client.query(
+            `INSERT INTO material_catalog (sku, name, category, unit, created_by)
+             VALUES ($1,$2,'restocked',$3,$4) RETURNING id`,
+            [generateSku(request.item_name), request.item_name, request.unit, req.user!.id],
+          );
+          materialId = newMaterial[0].id;
+        }
+      }
+
+      await client.query(
+        `INSERT INTO inventory_transactions
+            (material_id, type, quantity, to_user_id, client_txn_id, device_id, occurred_at)
+         VALUES ($1,'add',$2,$3,$4,$5,now())`,
+        [materialId, request.quantity_needed, req.user!.id, uuid(), req.deviceId ?? null],
+      );
+      const quantityHave = await resolveAdditiveConflict(materialId!, req.user!.id, client);
+
+      await client.query(`DELETE FROM restock_requests WHERE id = $1`, [req.params.id]);
+      await client.query('COMMIT');
+      res.json({ materialId, quantityHave });
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+  }),
+);

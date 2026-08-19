@@ -2,6 +2,7 @@ package com.workapp.crew.data.repository
 
 import com.workapp.crew.data.remote.ApiService
 import com.workapp.crew.data.remote.CreateRestockRequest
+import com.workapp.crew.data.remote.FulfillRestockResponse
 import com.workapp.crew.data.remote.RestockItemDto
 import com.workapp.crew.data.remote.UpdateRestockRequest
 import javax.inject.Inject
@@ -24,4 +25,8 @@ class RestockRepository @Inject constructor(private val api: ApiService) {
     suspend fun remove(id: String) {
         api.deleteRestockRequest(id)
     }
+
+    /** Credits the requested quantity to the caller's Material Ledger and clears the request —
+     * matches the web app's "Restocked" button (POST .../fulfill instead of a plain DELETE). */
+    suspend fun fulfill(id: String): FulfillRestockResponse = api.fulfillRestockRequest(id)
 }

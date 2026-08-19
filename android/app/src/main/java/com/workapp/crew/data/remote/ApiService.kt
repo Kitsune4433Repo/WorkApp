@@ -79,6 +79,7 @@ data class RestockItemDto(
 data class CreateRestockRequest(val itemName: String, val unit: String, val quantityNeeded: Double, val note: String?)
 data class CreateRestockResponse(val id: String)
 data class UpdateRestockRequest(val quantityNeeded: Double? = null, val note: String? = null)
+data class FulfillRestockResponse(val materialId: String, val quantityHave: Double)
 
 // --- Payroll -------------------------------------------------------------------
 // earnings_cents / total_wage_cents are BIGINT on the backend — same string-serialization issue as
@@ -205,6 +206,9 @@ interface ApiService {
 
     @DELETE("inventory/restock/{id}")
     suspend fun deleteRestockRequest(@Path("id") id: String)
+
+    @POST("inventory/restock/{id}/fulfill")
+    suspend fun fulfillRestockRequest(@Path("id") id: String): FulfillRestockResponse
 
     @GET("timecards/weekly-summary")
     suspend fun getWeeklySummary(): WeeklySummaryDto

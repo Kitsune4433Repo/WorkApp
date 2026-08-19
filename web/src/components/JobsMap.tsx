@@ -120,7 +120,11 @@ export function JobsMap({ jobs, picker }: { jobs: MapJob[]; picker?: MapPicker }
   const located = jobs.filter((j) => j.lat != null && j.lng != null);
 
   return (
-    <div className="h-96 overflow-hidden rounded-lg border border-slate-200">
+    // A fixed pixel height (the old h-96) paired with an unconstrained width made this a short,
+    // wide strip on a big desktop monitor and forced sideways scrolling on some phones — sizing off
+    // aspect-ratio instead keeps it proportional at any viewport width, with a floor/ceiling so it's
+    // never too short to be useful or so tall it pushes the rest of the page off-screen.
+    <div className="aspect-[4/3] min-h-[280px] max-h-[520px] overflow-hidden rounded-lg border border-slate-200 sm:aspect-video">
       <MapContainer center={picker?.siteLocation ?? DEFAULT_CENTER} zoom={picker?.siteLocation ? 17 : 11} className="h-full w-full">
         <TileLayer
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'

@@ -174,7 +174,9 @@ export function AppShell({ children }: { children: ReactNode }) {
       {/* relative + z-0 contains descendants' z-index (e.g. Leaflet's map panes, which use z-index up
           to 700 internally) inside this stacking context, so they can never paint above the z-50
           mobile drawer/backdrop even though 700 > 50 in absolute terms. */}
-      <main className="relative z-0 flex-1 overflow-y-auto p-4 md:p-8">{children}</main>
+      <main className="relative z-0 flex-1 overflow-y-auto overflow-x-hidden p-4 md:p-8">
+        <div className="mx-auto w-full max-w-6xl">{children}</div>
+      </main>
     </div>
   );
 }

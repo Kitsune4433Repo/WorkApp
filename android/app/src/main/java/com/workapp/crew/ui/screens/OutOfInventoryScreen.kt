@@ -48,6 +48,11 @@ class OutOfInventoryViewModel @Inject constructor(private val repository: Restoc
         repository.remove(id)
         refresh()
     }
+
+    fun fulfill(id: String) = viewModelScope.launch {
+        repository.fulfill(id)
+        refresh()
+    }
 }
 
 /** Out Of Inventory — mirrors web/src/pages/OutOfInventoryPage.tsx: a shared running list of
@@ -100,7 +105,7 @@ fun OutOfInventoryScreen(viewModel: OutOfInventoryViewModel = hiltViewModel()) {
                             val current = item.quantity_needed.toDoubleOrNull() ?: 0.0
                             viewModel.setQuantity(item.id, current + delta)
                         },
-                        onRestocked = { viewModel.remove(item.id) },
+                        onRestocked = { viewModel.fulfill(item.id) },
                     )
                 }
             }
