@@ -1,0 +1,6 @@
+<resources>
+    <!-- Soft Focus — same palette as ui/theme/Color.kt, used here for the pre-Compose window
+         background and status bar so there's no color flash before Compose takes over. -->
+    <color name="soft_focus_background">#FAF9FC</color>
+    <color name="soft_focus_primary">#8B6F9E</color>
+</resources>

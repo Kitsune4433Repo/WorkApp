@@ -1,3 +1,8 @@
 <resources>
-    <style name="Theme.CrewManagement" parent="android:Theme.Material.Light.NoActionBar" />
+    <!-- Soft Focus window background/status bar, matched to ui/theme/Theme.kt's Compose color
+         scheme, so there's no color flash between the launch window and Compose taking over. -->
+    <style name="Theme.CrewManagement" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/soft_focus_background</item>
+        <item name="android:statusBarColor">@color/soft_focus_primary</item>
+    </style>
 </resources>

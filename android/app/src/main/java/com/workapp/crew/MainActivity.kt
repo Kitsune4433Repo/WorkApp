@@ -24,6 +24,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.workapp.crew.data.repository.AuthRepository
 import com.workapp.crew.ui.screens.*
+import com.workapp.crew.ui.theme.CrewHubTheme
 import dagger.hilt.android.AndroidEntryPoint
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
@@ -49,7 +50,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
-            MaterialTheme {
+            CrewHubTheme {
                 Surface(modifier = Modifier.fillMaxSize()) {
                     CrewOpsApp()
                 }
