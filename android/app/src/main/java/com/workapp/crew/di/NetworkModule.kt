@@ -15,7 +15,7 @@ import retrofit2.converter.moshi.MoshiConverterFactory
 import java.util.concurrent.TimeUnit
 import javax.inject.Singleton
 
-private const val API_ORIGIN = "https://api.crewops.example.com"
+private const val API_ORIGIN = "https://crew-management-api.onrender.com"
 private const val BASE_URL = "$API_ORIGIN/api/"
 
 /** The bare origin (no `/api` suffix), for the Socket.IO connection — chat's `/ws/chat` path is
