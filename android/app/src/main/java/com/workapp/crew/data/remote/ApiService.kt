@@ -22,6 +22,9 @@ data class JobDto(
 // quantity_have (NUMERIC) and version (BIGINT) are serialized as JSON strings by the backend —
 // same pattern as RestockItemDto.quantity_needed below; parsed at the point of use in
 // SyncWorker.pullHaveLedger().
+data class CreateMaterialRequest(val name: String, val category: String, val unit: String, val description: String? = null)
+data class CreateMaterialResponse(val id: String)
+
 data class HaveRowDto(val material_id: String, val sku: String, val name: String, val unit: String, val quantity_have: String, val version: String)
 data class AdjustInventoryRequest(val materialId: String, val delta: Double, val jobId: String?, val clientTxnId: String, val occurredAt: String)
 data class AdjustInventoryResponse(val materialId: String, val quantityHave: Double)
@@ -61,6 +64,7 @@ data class DocumentPullDto(
 data class DocumentsPullResponse(val entityType: String, val since: String, val records: List<DocumentPullDto>, val syncedAt: String)
 
 data class DocumentDownloadUrlResponse(val url: String)
+data class DocumentUploadResponse(val id: String)
 
 data class RegisterDeviceRequest(val deviceId: String, val pushToken: String, val platform: String)
 
@@ -138,6 +142,9 @@ interface ApiService {
     @POST("inventory/have/adjust")
     suspend fun adjustInventory(@Body body: AdjustInventoryRequest): AdjustInventoryResponse
 
+    @POST("inventory/catalog")
+    suspend fun createMaterial(@Body body: CreateMaterialRequest): CreateMaterialResponse
+
     @POST("inventory/qr-transfer")
     suspend fun createQrTransfer(@Body body: QrTransferCreateRequest): QrTransferCreateResponse
 
@@ -179,6 +186,17 @@ interface ApiService {
 
     @GET("documents/{documentId}/download")
     suspend fun getDocumentDownloadUrl(@Path("documentId") documentId: String): DocumentDownloadUrlResponse
+
+    @Multipart
+    @POST("documents")
+    suspend fun uploadDocument(
+        @Part file: MultipartBody.Part,
+        @Part("title") title: RequestBody,
+        @Part("docType") docType: RequestBody,
+        @Part("category") category: RequestBody,
+        @Part("description") description: RequestBody?,
+        @Part("isMap") isMap: RequestBody,
+    ): DocumentUploadResponse
 
     @POST("users/devices")
     suspend fun registerDevice(@Body body: RegisterDeviceRequest)

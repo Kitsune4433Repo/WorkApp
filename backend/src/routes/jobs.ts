@@ -37,16 +37,17 @@ const createJobSchema = z.object({
 jobsRouter.get(
   '/',
   asyncHandler(async (req, res) => {
+    // Jobs are shared like the rest of the app (inventory, chat, users) — nothing in the product
+    // lets an admin/crew_lead actually assign specific crew members to a job (the create form never
+    // populates job_assignments), so filtering field roles down to "assigned" jobs made every job
+    // invisible to every crew/crew_lead account. assigneeUserIds is still recorded for targeted
+    // push notifications; it just no longer gates who can see a job.
     const { status } = req.query;
     const params: unknown[] = [];
     let where = '';
     if (status) {
       params.push(status);
       where = `WHERE j.status = $${params.length}`;
-    } else if (req.user!.role === 'crew' || req.user!.role === 'crew_lead') {
-      // Field roles only see jobs assigned to them by default.
-      params.push(req.user!.id);
-      where = `WHERE EXISTS (SELECT 1 FROM job_assignments a WHERE a.job_id = j.id AND a.user_id = $${params.length})`;
     }
 
     const { rows } = await pool.query(

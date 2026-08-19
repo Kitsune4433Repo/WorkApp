@@ -1,12 +1,15 @@
 package com.workapp.crew.ui.screens
 
 import android.content.Intent
+import android.net.Uri
+import android.provider.OpenableColumns
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.CloudDownload
+import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material3.*
@@ -15,11 +18,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.FileProvider
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.workapp.crew.data.local.entities.DocumentEntity
+import com.workapp.crew.data.repository.AuthRepository
 import com.workapp.crew.data.repository.DocumentRepository
 import com.workapp.crew.data.repository.DownloadResult
 import com.workapp.crew.ui.util.PeriodicRefresh
@@ -30,8 +36,16 @@ import kotlinx.coroutines.launch
 import java.io.File
 import javax.inject.Inject
 
+private val UPLOAD_ROLES = setOf("admin", "crew_lead")
+private val DOCUMENT_CATEGORIES = listOf("Production", "Property Map")
+
 @HiltViewModel
-class DocumentLibraryViewModel @Inject constructor(private val repository: DocumentRepository) : ViewModel() {
+class DocumentLibraryViewModel @Inject constructor(
+    private val repository: DocumentRepository,
+    authRepository: AuthRepository,
+) : ViewModel() {
+    val canUpload = authRepository.currentRole in UPLOAD_ROLES
+
     val documents = repository.observeAll().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     fun refresh() = repository.refresh()
@@ -39,6 +53,9 @@ class DocumentLibraryViewModel @Inject constructor(private val repository: Docum
     var downloadingId by mutableStateOf<String?>(null)
         private set
     var errorMessage by mutableStateOf<String?>(null)
+        private set
+
+    var uploading by mutableStateOf(false)
         private set
 
     fun download(doc: DocumentEntity, onReady: (String) -> Unit) {
@@ -52,6 +69,43 @@ class DocumentLibraryViewModel @Inject constructor(private val repository: Docum
             downloadingId = null
         }
     }
+
+    /** Matches web's UploadCenter: docType is derived from the file itself (extension, falling
+     * back to the MIME subtype) rather than asked of the user; isMap follows from the category. */
+    fun upload(fileUri: Uri, fileName: String, mimeType: String, title: String, category: String, description: String?) {
+        uploading = true
+        errorMessage = null
+        viewModelScope.launch {
+            try {
+                val docType = fileName.substringAfterLast('.', "").ifBlank { mimeType.substringAfter('/', "file") }.lowercase()
+                repository.upload(
+                    fileUri = fileUri,
+                    fileName = fileName,
+                    mimeType = mimeType,
+                    title = title,
+                    docType = docType,
+                    category = category,
+                    description = description?.ifBlank { null },
+                    isMap = category == "Property Map",
+                )
+            } catch (e: Exception) {
+                errorMessage = "Failed to upload."
+            } finally {
+                uploading = false
+            }
+        }
+    }
+}
+
+/** Resolves a content:// Uri's display name — needed because the picker only hands back an
+ * opaque Uri, not a filename, and the upload form needs one for both the title default and the
+ * multipart filename. */
+private fun queryDisplayName(context: android.content.Context, uri: Uri): String {
+    context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+        val nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+        if (nameIndex >= 0 && cursor.moveToFirst()) return cursor.getString(nameIndex) ?: "file"
+    }
+    return "file"
 }
 
 /** Feature 6: searchable, offline-capable library of job files, manuals, and property maps. */
@@ -66,6 +120,16 @@ fun DocumentLibraryScreen(viewModel: DocumentLibraryViewModel = hiltViewModel(),
         Spacer(Modifier.height(4.dp))
         Text("Cached documents stay available with zero signal.", style = MaterialTheme.typography.bodySmall)
         Spacer(Modifier.height(12.dp))
+
+        if (viewModel.canUpload) {
+            UploadForm(
+                uploading = viewModel.uploading,
+                onUpload = { uri, fileName, mimeType, title, category, description ->
+                    viewModel.upload(uri, fileName, mimeType, title, category, description)
+                },
+            )
+            Spacer(Modifier.height(12.dp))
+        }
 
         viewModel.errorMessage?.let {
             Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(bottom = 8.dp))
@@ -90,6 +154,82 @@ fun DocumentLibraryScreen(viewModel: DocumentLibraryViewModel = hiltViewModel(),
                         }
                     },
                 )
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun UploadForm(
+    uploading: Boolean,
+    onUpload: (uri: Uri, fileName: String, mimeType: String, title: String, category: String, description: String?) -> Unit,
+) {
+    val context = LocalContext.current
+    var expanded by remember { mutableStateOf(false) }
+    var pickedUri by remember { mutableStateOf<Uri?>(null) }
+    var pickedName by remember { mutableStateOf("") }
+    var title by remember { mutableStateOf("") }
+    var category by remember { mutableStateOf(DOCUMENT_CATEGORIES[0]) }
+    var categoryMenuExpanded by remember { mutableStateOf(false) }
+    var description by remember { mutableStateOf("") }
+
+    val pickFile = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        if (uri != null) {
+            pickedUri = uri
+            pickedName = queryDisplayName(context, uri)
+            if (title.isBlank()) title = pickedName.substringBeforeLast('.')
+        }
+    }
+
+    ElevatedCard(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(12.dp)) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Text("Upload a resource", style = MaterialTheme.typography.titleSmall)
+                TextButton(onClick = { expanded = !expanded }) { Text(if (expanded) "Cancel" else "Upload") }
+            }
+            if (expanded) {
+                Spacer(Modifier.height(8.dp))
+                OutlinedButton(onClick = { pickFile.launch("*/*") }, modifier = Modifier.fillMaxWidth()) {
+                    Icon(Icons.Filled.CloudUpload, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text(pickedName.ifBlank { "Choose a file" })
+                }
+                Spacer(Modifier.height(8.dp))
+                OutlinedTextField(value = title, onValueChange = { title = it }, label = { Text("Title") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                Spacer(Modifier.height(8.dp))
+                ExposedDropdownMenuBox(expanded = categoryMenuExpanded, onExpandedChange = { categoryMenuExpanded = it }) {
+                    OutlinedTextField(
+                        value = category,
+                        onValueChange = {},
+                        readOnly = true,
+                        label = { Text("Category") },
+                        modifier = Modifier.menuAnchor().fillMaxWidth(),
+                    )
+                    ExposedDropdownMenu(expanded = categoryMenuExpanded, onDismissRequest = { categoryMenuExpanded = false }) {
+                        DOCUMENT_CATEGORIES.forEach { c ->
+                            DropdownMenuItem(text = { Text(c) }, onClick = { category = c; categoryMenuExpanded = false })
+                        }
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = description,
+                    onValueChange = { description = it },
+                    label = { Text("Description (optional)") },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Spacer(Modifier.height(8.dp))
+                Button(
+                    onClick = {
+                        val uri = pickedUri ?: return@Button
+                        val mimeType = context.contentResolver.getType(uri) ?: "application/octet-stream"
+                        onUpload(uri, pickedName, mimeType, title.trim(), category, description.trim())
+                        pickedUri = null; pickedName = ""; title = ""; description = ""; expanded = false
+                    },
+                    enabled = !uploading && pickedUri != null && title.isNotBlank(),
+                    modifier = Modifier.align(Alignment.End),
+                ) { Text(if (uploading) "Uploading…" else "Save") }
             }
         }
     }

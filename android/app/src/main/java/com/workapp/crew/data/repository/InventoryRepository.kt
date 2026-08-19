@@ -4,6 +4,7 @@ import com.workapp.crew.data.local.dao.InventoryDao
 import com.workapp.crew.data.local.entities.InventoryPendingDeltaEntity
 import com.workapp.crew.data.local.entities.TruckInventoryEntity
 import com.workapp.crew.data.remote.ApiService
+import com.workapp.crew.data.remote.CreateMaterialRequest
 import com.workapp.crew.data.remote.QrTransferClaimResponse
 import com.workapp.crew.data.remote.QrTransferCreateRequest
 import com.workapp.crew.sync.SyncWorker
@@ -42,6 +43,14 @@ class InventoryRepository @Inject constructor(
                 occurredAt = System.currentTimeMillis(),
             ),
         )
+        SyncWorker.triggerImmediateSync(context)
+    }
+
+    /** Admin/crew_lead only (enforced server-side) — matches web's Material Ledger "Add material to
+     * catalog" form. Triggers a sync afterward so the new material shows up in observeHaveLedger()
+     * immediately instead of waiting for the next background pull. */
+    suspend fun addMaterial(name: String, category: String, unit: String) {
+        api.createMaterial(CreateMaterialRequest(name, category, unit))
         SyncWorker.triggerImmediateSync(context)
     }
 

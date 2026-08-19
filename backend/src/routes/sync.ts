@@ -45,15 +45,9 @@ syncRouter.get(
 
     let rows: unknown[];
     if (entityType === 'jobs') {
-      // Field roles only pull jobs assigned to them; office roles see the full changed set.
-      const isFieldRole = req.user!.role === 'crew' || req.user!.role === 'crew_lead';
-      const params: unknown[] = [since];
-      let assignmentFilter = '';
-      if (isFieldRole) {
-        params.push(req.user!.id);
-        assignmentFilter = `AND EXISTS (SELECT 1 FROM job_assignments a WHERE a.job_id = j.id AND a.user_id = $${params.length})`;
-      }
-      ({ rows } = await pool.query(`${JOBS_PULL_QUERY} ${assignmentFilter} ORDER BY j.updated_at`, params));
+      // Jobs sync the same way for every role — see the matching comment in jobs.ts's GET / for
+      // why this used to filter field roles down to job_assignments (and made every job invisible).
+      ({ rows } = await pool.query(`${JOBS_PULL_QUERY} ORDER BY j.updated_at`, [since]));
     } else {
       ({ rows } = await pool.query(ENTITY_QUERIES[entityType], [since]));
     }
