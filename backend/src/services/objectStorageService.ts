@@ -1,4 +1,4 @@
-import { S3Client, PutObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
+import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { NodeHttpHandler } from '@smithy/node-http-handler';
 import { randomUUID } from 'crypto';
@@ -66,4 +66,14 @@ export async function uploadBuffer(prefix: string, buffer: Buffer, contentType: 
 
 export async function getSignedDownloadUrl(key: string, expiresInSeconds = 3600): Promise<string> {
   return getSignedUrl(signingClient, new GetObjectCommand({ Bucket: BUCKET, Key: key }), { expiresIn: expiresInSeconds });
+}
+
+// Best-effort: an orphaned object left behind in the bucket is harmless, whereas failing the whole
+// delete because storage happened to be briefly unreachable would leave the DB row stuck too.
+export async function deleteObject(key: string): Promise<void> {
+  try {
+    await s3.send(new DeleteObjectCommand({ Bucket: BUCKET, Key: key }));
+  } catch (err) {
+    console.warn(`[objectStorageService] failed to delete ${key} from the bucket:`, err instanceof Error ? err.message : err);
+  }
 }

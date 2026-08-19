@@ -5,7 +5,7 @@ import { z } from 'zod';
 import { pool, withTransaction } from '../config/database';
 import { requireAuth, requireRole } from '../middleware/auth';
 import { asyncHandler, ApiError } from '../middleware/errorHandler';
-import { uploadBuffer, getSignedDownloadUrl } from '../services/objectStorageService';
+import { uploadBuffer, getSignedDownloadUrl, deleteObject } from '../services/objectStorageService';
 import { recordConflict } from '../services/conflictResolutionService';
 
 export const documentsRouter = Router();
@@ -94,6 +94,23 @@ documentsRouter.post(
     });
 
     res.status(201).json({ documentId: req.params.documentId, versionNumber: version });
+  }),
+);
+
+// document_versions and map_annotations both cascade on document_id, so removing the documents
+// row cleans up the DB side; the object storage files aren't referenced anywhere else, so they're
+// removed too (best-effort — see deleteObject).
+documentsRouter.delete(
+  '/:documentId',
+  requireRole('admin', 'dispatcher', 'crew_lead'),
+  asyncHandler(async (req, res) => {
+    const { rows: versionRows } = await pool.query(`SELECT file_url FROM document_versions WHERE document_id = $1`, [
+      req.params.documentId,
+    ]);
+    const { rows } = await pool.query(`DELETE FROM documents WHERE id = $1 RETURNING id`, [req.params.documentId]);
+    if (!rows.length) throw new ApiError(404, 'document_not_found');
+    await Promise.all(versionRows.map((v) => deleteObject(v.file_url)));
+    res.status(204).end();
   }),
 );
 

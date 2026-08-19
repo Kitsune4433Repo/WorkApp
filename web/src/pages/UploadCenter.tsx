@@ -16,6 +16,7 @@ interface Document {
 
 const CATEGORIES = ['Production', 'Property Map'] as const;
 const IMAGE_EXTENSIONS = new Set(['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg']);
+const MANAGE_ROLES = ['admin', 'dispatcher', 'crew_lead'];
 
 // Surfaces the backend's specific reason (e.g. "object storage isn't configured") instead of a
 // generic "Failed to upload" — the only diagnostic available on a live deploy without shell/log access.
@@ -78,10 +79,23 @@ export function UploadCenter() {
     },
   });
 
+  const deleteMutation = useMutation({
+    mutationFn: (documentId: string) => api.delete(`/documents/${documentId}`),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['documents'] }),
+  });
+
   function onSubmit(e: FormEvent) {
     e.preventDefault();
     uploadMutation.mutate();
   }
+
+  function onDelete(doc: Document) {
+    if (window.confirm(`Delete "${doc.title}"? This cannot be undone.`)) {
+      deleteMutation.mutate(doc.id);
+    }
+  }
+
+  const canManage = !!user && MANAGE_ROLES.includes(user.role);
 
   return (
     <div className="space-y-8">
@@ -110,19 +124,26 @@ export function UploadCenter() {
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {documents?.map((doc) => (
-          <button
-            key={doc.id}
-            onClick={() => openMutation.mutate(doc)}
-            className="rounded-lg border border-slate-200 bg-white p-4 text-left hover:border-brand-300 hover:shadow-sm"
-          >
-            <div className="font-medium text-slate-900">{doc.title}</div>
-            <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-500">
-              <span className="rounded-full bg-slate-100 px-2 py-0.5 uppercase">{doc.doc_type}</span>
-              {doc.category && <span className="rounded-full bg-brand-50 px-2 py-0.5 text-brand-700">{doc.category}</span>}
-              <span>v{doc.current_version}</span>
-              {IMAGE_EXTENSIONS.has(doc.doc_type.toLowerCase()) && <span className="text-brand-600">draw/highlight</span>}
-            </div>
-          </button>
+          <div key={doc.id} className="rounded-lg border border-slate-200 bg-white p-4 hover:border-brand-300 hover:shadow-sm">
+            <button onClick={() => openMutation.mutate(doc)} className="w-full text-left">
+              <div className="font-medium text-slate-900">{doc.title}</div>
+              <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                <span className="rounded-full bg-slate-100 px-2 py-0.5 uppercase">{doc.doc_type}</span>
+                {doc.category && <span className="rounded-full bg-brand-50 px-2 py-0.5 text-brand-700">{doc.category}</span>}
+                <span>v{doc.current_version}</span>
+                {IMAGE_EXTENSIONS.has(doc.doc_type.toLowerCase()) && <span className="text-brand-600">draw/highlight</span>}
+              </div>
+            </button>
+            {canManage && (
+              <button
+                onClick={() => onDelete(doc)}
+                disabled={deleteMutation.isPending}
+                className="mt-2 rounded-md border border-red-300 px-2 py-1 text-xs font-medium text-red-600 hover:bg-red-50"
+              >
+                Delete
+              </button>
+            )}
+          </div>
         ))}
         {!documents?.length && <p className="text-slate-400">Nothing uploaded yet.</p>}
       </div>
