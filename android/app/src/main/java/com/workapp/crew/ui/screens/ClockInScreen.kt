@@ -14,6 +14,7 @@ import com.workapp.crew.data.local.entities.JobEntity
 import com.workapp.crew.data.repository.AuthRepository
 import com.workapp.crew.data.repository.LiveEarnings
 import com.workapp.crew.data.repository.TimecardRepository
+import com.workapp.crew.ui.util.LocationState
 import com.workapp.crew.ui.util.rememberCurrentLocation
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
@@ -54,6 +55,7 @@ fun ClockInScreen(viewModel: ClockInViewModel = hiltViewModel()) {
     val earnings by viewModel.liveEarnings.collectAsState()
     val clockableJobs by viewModel.clockableJobs.collectAsState()
     val location = rememberCurrentLocation()
+    val available = location as? LocationState.Available
 
     var selectedJob by remember { mutableStateOf<JobEntity?>(null) }
     var dropdownExpanded by remember { mutableStateOf(false) }
@@ -71,9 +73,10 @@ fun ClockInScreen(viewModel: ClockInViewModel = hiltViewModel()) {
             Text("$${"%.2f".format(e.earningsCents / 100.0)}", style = MaterialTheme.typography.displayMedium)
             Text("${e.activeMinutes / 60}h ${e.activeMinutes % 60}m active${if (e.onBreak) " (on break)" else ""}")
             Spacer(Modifier.height(24.dp))
-            Button(onClick = { location?.let { viewModel.clockOut(it.first, it.second) } }, enabled = location != null) {
-                Text(if (location != null) "Clock out" else "Getting your location…")
+            Button(onClick = { available?.let { viewModel.clockOut(it.lat, it.lng) } }, enabled = available != null) {
+                Text(if (available != null) "Clock out" else "Getting your location…")
             }
+            LocationHint(location)
         } else {
             ExposedDropdownMenuBox(expanded = dropdownExpanded, onExpandedChange = { dropdownExpanded = it }) {
                 OutlinedTextField(
@@ -102,9 +105,20 @@ fun ClockInScreen(viewModel: ClockInViewModel = hiltViewModel()) {
                 )
             }
             Spacer(Modifier.height(16.dp))
-            Button(onClick = { location?.let { viewModel.clockIn(selectedJob?.id, it.first, it.second) } }, enabled = location != null) {
-                Text(if (location != null) "Clock in" else "Getting your location…")
+            Button(onClick = { available?.let { viewModel.clockIn(selectedJob?.id, it.lat, it.lng) } }, enabled = available != null) {
+                Text(if (available != null) "Clock in" else "Getting your location…")
             }
+            LocationHint(location)
         }
     }
+}
+
+@Composable
+private fun LocationHint(location: LocationState) {
+    val message = when (location) {
+        is LocationState.PermissionDenied -> "Location permission is off — enable it in your phone's Settings > Apps > Crew Hub > Permissions to clock in."
+        is LocationState.Unavailable -> "Couldn't get a location fix — check that Location is turned on for this device."
+        else -> return
+    }
+    Text(message, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 8.dp))
 }

@@ -18,6 +18,7 @@ import com.workapp.crew.data.local.entities.JobEntity
 import com.workapp.crew.data.repository.AuthRepository
 import com.workapp.crew.data.repository.JobRepository
 import com.workapp.crew.ui.util.PeriodicRefresh
+import com.workapp.crew.ui.util.LocationState
 import com.workapp.crew.ui.util.rememberCurrentLocation
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
@@ -139,6 +140,7 @@ private fun CreateJobForm(
     onCreate: (jobNumber: String, title: String, description: String?, priority: String, lat: Double, lng: Double) -> Unit,
 ) {
     val location = rememberCurrentLocation()
+    val available = location as? LocationState.Available
     var jobNumber by remember { mutableStateOf("") }
     var title by remember { mutableStateOf("") }
     var description by remember { mutableStateOf("") }
@@ -168,15 +170,20 @@ private fun CreateJobForm(
             }
 
             Text(
-                if (location != null) "Site location: current GPS position" else "Getting your location…",
+                when (location) {
+                    is LocationState.Available -> "Site location: current GPS position"
+                    is LocationState.PermissionDenied -> "Location permission is off — enable it in Settings > Apps > Crew Hub > Permissions to set a site location."
+                    is LocationState.Unavailable -> "Couldn't get a location fix — check that Location is turned on for this device."
+                    is LocationState.Loading -> "Getting your location…"
+                },
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = if (location is LocationState.Available) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.error,
             )
             error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
 
             Button(
-                onClick = { location?.let { (lat, lng) -> onCreate(jobNumber.trim(), title.trim(), description.trim().ifBlank { null }, priority, lat, lng) } },
-                enabled = !saving && location != null && jobNumber.isNotBlank() && title.isNotBlank(),
+                onClick = { available?.let { (lat, lng) -> onCreate(jobNumber.trim(), title.trim(), description.trim().ifBlank { null }, priority, lat, lng) } },
+                enabled = !saving && available != null && jobNumber.isNotBlank() && title.isNotBlank(),
                 modifier = Modifier.align(Alignment.End),
             ) { Text(if (saving) "Creating…" else "Create job") }
         }
