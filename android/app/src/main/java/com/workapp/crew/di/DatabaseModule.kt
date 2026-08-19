@@ -18,6 +18,9 @@ object DatabaseModule {
     @Singleton
     fun provideDatabase(@ApplicationContext context: Context): AppDatabase =
         Room.databaseBuilder(context, AppDatabase::class.java, AppDatabase.DATABASE_NAME)
+            // This DB is a pure cache SyncWorker fully repopulates from the server — safe to just
+            // wipe and re-sync on a schema bump rather than hand-writing migrations for a pre-1.0 app.
+            .fallbackToDestructiveMigration()
             .fallbackToDestructiveMigrationOnDowngrade()
             .build()
 

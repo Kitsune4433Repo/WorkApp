@@ -9,6 +9,7 @@ data class ChatChannelEntity(
     val type: String,
     val name: String?,
     val jobId: String?,
+    val createdBy: String?,
 )
 
 @Entity(tableName = "chat_messages")
@@ -17,7 +18,11 @@ data class ChatMessageEntity(
     val serverId: String?,
     val channelId: String,
     val senderId: String,
+    val senderFullName: String?,
     val body: String?,
+    // The remote key of an image attachment (not a browsable path — resolved to a signed URL just
+    // before display, same split as web's ChatAttachmentImage).
+    val attachmentUrl: String?,
     val attachmentLocalPath: String?,
     val sentAt: Long,
     val synced: Boolean = false,

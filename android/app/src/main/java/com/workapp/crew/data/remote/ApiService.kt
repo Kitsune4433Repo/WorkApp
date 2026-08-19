@@ -73,12 +73,15 @@ data class DocumentUploadResponse(val id: String)
 
 data class RegisterDeviceRequest(val deviceId: String, val pushToken: String, val platform: String)
 
-data class ChatChannelDto(val id: String, val type: String, val name: String?, val job_id: String?)
+data class ChatChannelDto(val id: String, val type: String, val name: String?, val job_id: String?, val created_by: String?)
 data class CreateChannelRequest(val type: String, val name: String?, val jobId: String?, val memberUserIds: List<String>)
 data class CreateChannelResponse(val id: String)
 data class ChatMessageRemoteDto(
-    val id: String, val sender_id: String, val body: String?, val attachment_url: String?, val sent_at: String,
+    val id: String, val sender_id: String, val sender_full_name: String?,
+    val body: String?, val attachment_url: String?, val sent_at: String,
 )
+data class ChatAttachmentUploadResponse(val key: String)
+data class ChatAttachmentSignResponse(val url: String)
 
 // --- Out Of Inventory (restock requests) -------------------------------------
 // quantity_needed is NUMERIC on the backend, which Postgres/node-pg serializes as a JSON string —
@@ -217,6 +220,16 @@ interface ApiService {
 
     @GET("chat/channels/{channelId}/messages")
     suspend fun getChatMessages(@Path("channelId") channelId: String, @Query("before") before: String? = null): List<ChatMessageRemoteDto>
+
+    @DELETE("chat/channels/{channelId}")
+    suspend fun deleteChatChannel(@Path("channelId") channelId: String)
+
+    @Multipart
+    @POST("chat/attachments")
+    suspend fun uploadChatAttachment(@Part file: MultipartBody.Part): ChatAttachmentUploadResponse
+
+    @GET("chat/attachments/sign")
+    suspend fun signChatAttachment(@Query("key") key: String): ChatAttachmentSignResponse
 
     @POST("jobs/{jobId}/start")
     suspend fun startJob(@Path("jobId") jobId: String)

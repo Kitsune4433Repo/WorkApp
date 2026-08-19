@@ -24,4 +24,10 @@ interface ChatDao {
 
     @Query("UPDATE chat_messages SET synced = 1, serverId = :serverId WHERE clientMsgId = :clientMsgId")
     suspend fun markSynced(clientMsgId: String, serverId: String)
+
+    @Query("DELETE FROM chat_channels WHERE id = :channelId")
+    suspend fun deleteChannel(channelId: String)
+
+    @Query("DELETE FROM chat_messages WHERE channelId = :channelId")
+    suspend fun deleteMessagesForChannel(channelId: String)
 }

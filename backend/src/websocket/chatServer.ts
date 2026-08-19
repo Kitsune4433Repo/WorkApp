@@ -8,6 +8,7 @@ import { sendPushToUsers } from '../services/pushNotificationService';
 
 interface AuthedSocket extends Socket {
   userId?: string;
+  userFullName?: string;
 }
 
 export function attachChatServer(httpServer: HttpServer) {
@@ -27,8 +28,12 @@ export function attachChatServer(httpServer: HttpServer) {
     }
   });
 
-  io.on('connection', (socket: AuthedSocket) => {
+  io.on('connection', async (socket: AuthedSocket) => {
     socket.join(`user:${socket.userId}`);
+    // Fetched once per connection (not per message) so every message:new emit can carry the
+    // sender's name without a per-message users lookup.
+    const { rows: senderRows } = await pool.query(`SELECT full_name FROM users WHERE id = $1`, [socket.userId]);
+    socket.userFullName = senderRows[0]?.full_name;
 
     socket.on('channel:join', async (channelId: string) => {
       // Broadcast (open, admin-made) rooms don't require a chat_channel_members row — every user
@@ -87,6 +92,7 @@ export function attachChatServer(httpServer: HttpServer) {
               id: message.id,
               channelId: payload.channelId,
               senderId: socket.userId,
+              senderFullName: socket.userFullName,
               body: payload.body,
               attachmentUrl: payload.attachmentUrl,
               sentAt: message.sent_at,

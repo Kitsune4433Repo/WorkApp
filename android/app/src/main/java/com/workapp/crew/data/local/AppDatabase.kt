@@ -24,7 +24,7 @@ import com.workapp.crew.data.local.entities.*
         ChatChannelEntity::class,
         ChatMessageEntity::class,
     ],
-    version = 1,
+    version = 2,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {

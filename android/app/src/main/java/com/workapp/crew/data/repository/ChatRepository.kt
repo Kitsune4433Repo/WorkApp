@@ -1,5 +1,7 @@
 package com.workapp.crew.data.repository
 
+import android.content.Context
+import android.net.Uri
 import com.workapp.crew.data.local.dao.ChatDao
 import com.workapp.crew.data.local.entities.ChatChannelEntity
 import com.workapp.crew.data.local.entities.ChatMessageEntity
@@ -7,6 +9,7 @@ import com.workapp.crew.data.remote.ApiService
 import com.workapp.crew.data.remote.AuthTokenStore
 import com.workapp.crew.data.remote.CreateChannelRequest
 import com.workapp.crew.di.SOCKET_ORIGIN
+import dagger.hilt.android.qualifiers.ApplicationContext
 import io.socket.client.Ack
 import io.socket.client.IO
 import io.socket.client.Socket
@@ -17,7 +20,12 @@ import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.launch
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.MultipartBody
+import okhttp3.RequestBody.Companion.asRequestBody
 import org.json.JSONObject
+import java.io.File
+import java.io.IOException
 import java.time.Instant
 import java.util.UUID
 import javax.inject.Inject
@@ -31,6 +39,7 @@ class ChatRepository @Inject constructor(
     private val dao: ChatDao,
     private val api: ApiService,
     private val tokenStore: AuthTokenStore,
+    @ApplicationContext private val context: Context,
 ) {
     private var socket: Socket? = null
     // Socket event callbacks arrive off any ViewModel's lifecycle, so local persistence needs its
@@ -76,7 +85,9 @@ class ChatRepository @Inject constructor(
                         serverId = payload.optString("id"),
                         channelId = payload.optString("channelId"),
                         senderId = senderId,
+                        senderFullName = payload.optString("senderFullName", null),
                         body = payload.optString("body", null),
+                        attachmentUrl = payload.optString("attachmentUrl", null),
                         attachmentLocalPath = null,
                         sentAt = runCatching { Instant.parse(payload.optString("sentAt")).toEpochMilli() }.getOrDefault(System.currentTimeMillis()),
                         synced = true,
@@ -90,7 +101,7 @@ class ChatRepository @Inject constructor(
 
     suspend fun refreshChannels() {
         val channels = api.getChatChannels()
-        dao.upsertChannels(channels.map { ChatChannelEntity(id = it.id, type = it.type, name = it.name, jobId = it.job_id) })
+        dao.upsertChannels(channels.map { ChatChannelEntity(id = it.id, type = it.type, name = it.name, jobId = it.job_id, createdBy = it.created_by) })
     }
 
     /** Admin-only (enforced server-side): an open "broadcast" room every user — present and
@@ -99,6 +110,14 @@ class ChatRepository @Inject constructor(
         val response = api.createChatChannel(CreateChannelRequest(type = "broadcast", name = name, jobId = null, memberUserIds = emptyList()))
         refreshChannels()
         return response.id
+    }
+
+    /** Creator or admin (enforced server-side); messages/membership cascade-delete with the room
+     * on the server, so just drop the same rows from the local cache. */
+    suspend fun deleteChannel(channelId: String) {
+        api.deleteChatChannel(channelId)
+        dao.deleteMessagesForChannel(channelId)
+        dao.deleteChannel(channelId)
     }
 
     fun observeChannels() = dao.observeChannels()
@@ -113,7 +132,9 @@ class ChatRepository @Inject constructor(
                     serverId = dto.id,
                     channelId = channelId,
                     senderId = dto.sender_id,
+                    senderFullName = dto.sender_full_name,
                     body = dto.body,
+                    attachmentUrl = dto.attachment_url,
                     attachmentLocalPath = null,
                     sentAt = runCatching { Instant.parse(dto.sent_at).toEpochMilli() }.getOrDefault(System.currentTimeMillis()),
                     synced = true,
@@ -122,7 +143,24 @@ class ChatRepository @Inject constructor(
         }
     }
 
-    fun sendMessage(channelId: String, senderId: String, body: String) {
+    /** Uploads a picked image and returns its storage key (not a browsable URL — see
+     * [signAttachmentUrl]), matching web's ChatPage upload-then-send flow. */
+    suspend fun uploadAttachment(fileUri: Uri, mimeType: String): String {
+        val tempFile = File(context.cacheDir, "chat_upload_${System.currentTimeMillis()}")
+        try {
+            context.contentResolver.openInputStream(fileUri)?.use { input ->
+                tempFile.outputStream().use { output -> input.copyTo(output) }
+            } ?: throw IOException("Can't read the selected photo")
+            val part = MultipartBody.Part.createFormData("file", "photo", tempFile.asRequestBody(mimeType.toMediaType()))
+            return api.uploadChatAttachment(part).key
+        } finally {
+            tempFile.delete()
+        }
+    }
+
+    suspend fun signAttachmentUrl(key: String): String = api.signChatAttachment(key).url
+
+    fun sendMessage(channelId: String, senderId: String, body: String, attachmentUrl: String? = null) {
         val clientMsgId = UUID.randomUUID().toString()
         // Optimistic local write so the sender sees the message instantly, before the server (or
         // even the socket connection) confirms anything.
@@ -133,7 +171,9 @@ class ChatRepository @Inject constructor(
                     serverId = null,
                     channelId = channelId,
                     senderId = senderId,
+                    senderFullName = tokenStore.fullName,
                     body = body,
+                    attachmentUrl = attachmentUrl,
                     attachmentLocalPath = null,
                     sentAt = System.currentTimeMillis(),
                     synced = false,
@@ -145,6 +185,7 @@ class ChatRepository @Inject constructor(
             put("channelId", channelId)
             put("body", body)
             put("clientMsgId", clientMsgId)
+            if (attachmentUrl != null) put("attachmentUrl", attachmentUrl)
         }
         socket?.emit("message:send", arrayOf(payload), Ack { args ->
             val result = args.getOrNull(0) as? JSONObject ?: return@Ack

@@ -6,6 +6,7 @@ export interface ChatMessage {
   id: string;
   channelId: string;
   senderId: string;
+  senderFullName?: string | null;
   body?: string;
   attachmentUrl?: string;
   sentAt: string;
@@ -39,9 +40,9 @@ export function useChatSocket(channelId: string | null) {
     };
   }, [channelId]);
 
-  function sendMessage(body: string, clientMsgId: string) {
+  function sendMessage(body: string, clientMsgId: string, attachmentUrl?: string) {
     if (!channelId) return;
-    socketRef.current?.emit('message:send', { channelId, body, clientMsgId });
+    socketRef.current?.emit('message:send', { channelId, body, clientMsgId, attachmentUrl });
   }
 
   function setInitialMessages(initial: ChatMessage[]) {
