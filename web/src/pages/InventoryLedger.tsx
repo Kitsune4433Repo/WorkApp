@@ -38,7 +38,7 @@ export function InventoryLedger() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['inventory', 'have', user?.id] }),
   });
 
-  const canManageCatalog = user?.role === 'admin' || user?.role === 'dispatcher' || user?.role === 'crew_lead';
+  const canManageCatalog = user?.role === 'admin' || user?.role === 'crew_lead';
 
   function onRemove(row: HaveRow) {
     if (window.confirm(`Remove "${row.name}" from the material catalog? This won't affect past usage history.`)) {

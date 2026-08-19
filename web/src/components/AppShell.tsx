@@ -15,8 +15,8 @@ interface NavSection {
   items: NavItem[];
 }
 
-const CONFLICT_REVIEW_ROLES = ['admin', 'dispatcher'];
-const PAYROLL_VIEW_ROLES = ['admin', 'dispatcher', 'crew_lead'];
+const CONFLICT_REVIEW_ROLES = ['admin', 'crew_lead'];
+const PAYROLL_VIEW_ROLES = ['admin', 'crew_lead'];
 
 function NavItemLink({ item, onNavigate }: { item: NavItem; onNavigate?: () => void }) {
   return (

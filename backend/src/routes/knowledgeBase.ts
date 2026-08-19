@@ -52,7 +52,7 @@ const articleSchema = z.object({
 
 knowledgeBaseRouter.post(
   '/',
-  requireRole('admin', 'dispatcher', 'crew_lead'),
+  requireRole('admin', 'crew_lead'),
   asyncHandler(async (req, res) => {
     const body = articleSchema.parse(req.body);
     const { rows } = await pool.query(
@@ -66,7 +66,7 @@ knowledgeBaseRouter.post(
 
 knowledgeBaseRouter.patch(
   '/:id',
-  requireRole('admin', 'dispatcher', 'crew_lead'),
+  requireRole('admin', 'crew_lead'),
   asyncHandler(async (req, res) => {
     const body = articleSchema.partial().parse(req.body);
     const sets: string[] = [];

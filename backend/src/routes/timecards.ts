@@ -7,7 +7,7 @@ import { isPointInJobGeofence, toGeographyPoint, recordLocationPing } from '../s
 import { detectTamper } from '../services/tamperDetectionService';
 import { getPayrollPeriodContaining, computePeriodTotals } from '../services/payrollPeriodService';
 
-const PAYROLL_VIEW_ROLES = ['admin', 'dispatcher', 'crew_lead'] as const;
+const PAYROLL_VIEW_ROLES = ['admin', 'crew_lead'] as const;
 
 export const timecardsRouter = Router();
 timecardsRouter.use(requireAuth);

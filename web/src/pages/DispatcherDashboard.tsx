@@ -103,7 +103,7 @@ export function DispatcherDashboard() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['jobs'] }),
   });
 
-  const canDispatch = user?.role === 'admin' || user?.role === 'dispatcher';
+  const canManageJobs = user?.role === 'admin' || user?.role === 'crew_lead';
 
   function onRemove(job: Job) {
     if (window.confirm(`Remove job ${job.job_number} — ${job.title}? This cannot be undone.`)) {
@@ -121,7 +121,7 @@ export function DispatcherDashboard() {
       <JobsMap
         jobs={jobs ?? []}
         picker={
-          canDispatch
+          canManageJobs
             ? {
                 siteLocation,
                 radiusM: Number(geofenceRadiusM) || 75,
@@ -133,7 +133,7 @@ export function DispatcherDashboard() {
         }
       />
 
-      {canDispatch && (
+      {canManageJobs && (
         <CreateJobForm
           siteAddress={siteAddress}
           onSiteAddressChange={setSiteAddress}
@@ -156,7 +156,7 @@ export function DispatcherDashboard() {
               <th className="px-4 py-3">Priority</th>
               <th className="px-4 py-3">Status</th>
               <th className="px-4 py-3">Scheduled</th>
-              {canDispatch && <th className="px-4 py-3" />}
+              {canManageJobs && <th className="px-4 py-3" />}
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
@@ -181,7 +181,7 @@ export function DispatcherDashboard() {
                     <td className="px-4 py-3">
                       {recurrence ?? (job.scheduled_start ? formatDateTime(job.scheduled_start) : '—')}
                     </td>
-                    {canDispatch && (
+                    {canManageJobs && (
                       <td className="px-4 py-3 text-right space-x-2">
                         {job.is_active ? (
                           <button
@@ -218,7 +218,7 @@ export function DispatcherDashboard() {
                   </tr>
                   {isEditing && (
                     <tr>
-                      <td colSpan={canDispatch ? 6 : 5} className="bg-slate-50 px-4 py-4">
+                      <td colSpan={canManageJobs ? 6 : 5} className="bg-slate-50 px-4 py-4">
                         <JobScheduleEditor job={job} onDone={() => setEditingJobId(null)} />
                       </td>
                     </tr>

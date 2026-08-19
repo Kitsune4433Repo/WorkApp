@@ -13,13 +13,12 @@ interface User {
   is_active: boolean;
 }
 
-const ROLES = ['admin', 'dispatcher', 'crew_lead', 'technician'] as const;
+const ROLES = ['admin', 'crew_lead', 'crew'] as const;
 
 const ROLE_LABELS: Record<string, string> = {
   admin: 'Admin',
-  dispatcher: 'Dispatcher',
   crew_lead: 'Crew Lead',
-  technician: 'Technician',
+  crew: 'Crew',
 };
 
 /** Admin-only account provisioning — this app deliberately has no public sign-up (it's an internal
@@ -56,7 +55,7 @@ export function UserManagementPage() {
     <div className="space-y-8">
       <div>
         <h1 className="text-2xl font-bold text-slate-900">Users</h1>
-        <p className="text-sm text-slate-500">Create accounts for dispatchers, crew leads, and field technicians.</p>
+        <p className="text-sm text-slate-500">Create accounts for admins, crew leads, and crew.</p>
       </div>
 
       <CreateUserForm onCreated={() => queryClient.invalidateQueries({ queryKey: ['users'] })} />
@@ -130,7 +129,7 @@ function CreateUserForm({ onCreated }: { onCreated: () => void }) {
     email: '',
     password: '',
     fullName: '',
-    role: 'technician' as (typeof ROLES)[number],
+    role: 'crew' as (typeof ROLES)[number],
     hourlyRateCents: '',
   });
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
@@ -146,7 +145,7 @@ function CreateUserForm({ onCreated }: { onCreated: () => void }) {
       }),
     onSuccess: (res) => {
       setSuccessMessage(`Created ${res.data.email}.`);
-      setForm({ email: '', password: '', fullName: '', role: 'technician', hourlyRateCents: '' });
+      setForm({ email: '', password: '', fullName: '', role: 'crew', hourlyRateCents: '' });
       onCreated();
     },
     onError: () => setSuccessMessage(null),

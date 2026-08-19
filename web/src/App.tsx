@@ -41,7 +41,7 @@ export default function App() {
                 <Route
                   path="/payroll"
                   element={
-                    <RequireRole roles={['admin', 'dispatcher', 'crew_lead']}>
+                    <RequireRole roles={['admin', 'crew_lead']}>
                       <PayrollSummaryPage />
                     </RequireRole>
                   }
@@ -49,7 +49,7 @@ export default function App() {
                 <Route
                   path="/conflicts"
                   element={
-                    <RequireRole roles={['admin', 'dispatcher']}>
+                    <RequireRole roles={['admin', 'crew_lead']}>
                       <ConflictReviewPage />
                     </RequireRole>
                   }

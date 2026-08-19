@@ -2,10 +2,10 @@
 
 INSERT INTO users (email, password_hash, full_name, role, hourly_rate_cents, is_active) VALUES
     ('admin@crewops.dev',      '$2a$12$KrFvE7vtcmwjHKFIicZir.vSSejEdeTiLslQdKJEjKU2uJuQ.iPeO', 'Alex Admin',        'admin',      0,    true),
-    ('dispatch@crewops.dev',   '$2a$12$KrFvE7vtcmwjHKFIicZir.vSSejEdeTiLslQdKJEjKU2uJuQ.iPeO', 'Dana Dispatcher',   'dispatcher', 0,    true),
+    ('dispatch@crewops.dev',   '$2a$12$KrFvE7vtcmwjHKFIicZir.vSSejEdeTiLslQdKJEjKU2uJuQ.iPeO', 'Dana Dispatcher',   'crew_lead',  0,    true),
     ('lead@crewops.dev',       '$2a$12$KrFvE7vtcmwjHKFIicZir.vSSejEdeTiLslQdKJEjKU2uJuQ.iPeO', 'Lee CrewLead',      'crew_lead',  3200, true),
-    ('tech1@crewops.dev',      '$2a$12$KrFvE7vtcmwjHKFIicZir.vSSejEdeTiLslQdKJEjKU2uJuQ.iPeO', 'Terry Technician',  'technician', 2800, true),
-    ('tech2@crewops.dev',      '$2a$12$KrFvE7vtcmwjHKFIicZir.vSSejEdeTiLslQdKJEjKU2uJuQ.iPeO', 'Sam Fielder',       'technician', 2800, true)
+    ('tech1@crewops.dev',      '$2a$12$KrFvE7vtcmwjHKFIicZir.vSSejEdeTiLslQdKJEjKU2uJuQ.iPeO', 'Terry Technician',  'crew',       2800, true),
+    ('tech2@crewops.dev',      '$2a$12$KrFvE7vtcmwjHKFIicZir.vSSejEdeTiLslQdKJEjKU2uJuQ.iPeO', 'Sam Fielder',       'crew',       2800, true)
 ON CONFLICT (email) DO NOTHING;
 
 INSERT INTO material_catalog (sku, name, category, unit, description, created_by)

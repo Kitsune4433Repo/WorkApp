@@ -43,7 +43,7 @@ jobsRouter.get(
     if (status) {
       params.push(status);
       where = `WHERE j.status = $${params.length}`;
-    } else if (req.user!.role === 'technician' || req.user!.role === 'crew_lead') {
+    } else if (req.user!.role === 'crew' || req.user!.role === 'crew_lead') {
       // Field roles only see jobs assigned to them by default.
       params.push(req.user!.id);
       where = `WHERE EXISTS (SELECT 1 FROM job_assignments a WHERE a.job_id = j.id AND a.user_id = $${params.length})`;
@@ -67,7 +67,7 @@ jobsRouter.get(
 
 jobsRouter.post(
   '/',
-  requireRole('admin', 'dispatcher'),
+  requireRole('admin', 'crew_lead'),
   asyncHandler(async (req, res) => {
     const body = createJobSchema.parse(req.body);
     const client = await pool.connect();
@@ -127,7 +127,7 @@ jobsRouter.post(
 
 jobsRouter.post(
   '/:jobId/dispatch',
-  requireRole('admin', 'dispatcher'),
+  requireRole('admin', 'crew_lead'),
   asyncHandler(async (req, res) => {
     const { jobId } = req.params;
     const { rows } = await pool.query(
@@ -154,7 +154,7 @@ jobsRouter.post(
 // tracked separately from dispatched_at, which is left alone for the existing Android/API dispatch flow.
 jobsRouter.post(
   '/:jobId/start',
-  requireRole('admin', 'dispatcher'),
+  requireRole('admin', 'crew_lead'),
   asyncHandler(async (req, res) => {
     const { rows } = await pool.query(
       `UPDATE jobs SET status = 'in_progress', started_at = now(), updated_at = now() WHERE id = $1 RETURNING id`,
@@ -167,7 +167,7 @@ jobsRouter.post(
 
 jobsRouter.post(
   '/:jobId/stop',
-  requireRole('admin', 'dispatcher'),
+  requireRole('admin', 'crew_lead'),
   asyncHandler(async (req, res) => {
     const { rows } = await pool.query(
       `UPDATE jobs SET status = 'scheduled', stopped_at = now(), updated_at = now() WHERE id = $1 RETURNING id`,
@@ -180,7 +180,7 @@ jobsRouter.post(
 
 jobsRouter.patch(
   '/:jobId',
-  requireRole('admin', 'dispatcher'),
+  requireRole('admin', 'crew_lead'),
   asyncHandler(async (req, res) => {
     const schema = z.object({
       status: z.enum(['draft', 'scheduled', 'dispatched', 'in_progress', 'blocked', 'completed', 'closed', 'cancelled']).optional(),
@@ -225,7 +225,7 @@ jobsRouter.patch(
 // removes its dependent rows without a foreign-key violation.
 jobsRouter.delete(
   '/:jobId',
-  requireRole('admin', 'dispatcher'),
+  requireRole('admin', 'crew_lead'),
   asyncHandler(async (req, res) => {
     const { rows } = await pool.query(`DELETE FROM jobs WHERE id = $1 RETURNING id`, [req.params.jobId]);
     if (!rows.length) throw new ApiError(404, 'job_not_found');

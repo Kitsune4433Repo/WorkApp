@@ -1,7 +1,7 @@
 import { createContext, useContext, useState, ReactNode } from 'react';
 import { api } from '../api/client';
 
-type Role = 'admin' | 'dispatcher' | 'crew_lead' | 'technician';
+type Role = 'admin' | 'crew_lead' | 'crew';
 
 interface AuthUser {
   id: string;

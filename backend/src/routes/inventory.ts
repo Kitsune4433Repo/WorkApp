@@ -47,7 +47,7 @@ inventoryRouter.get(
 
 inventoryRouter.post(
   '/catalog',
-  requireRole('admin', 'dispatcher', 'crew_lead'),
+  requireRole('admin', 'crew_lead'),
   asyncHandler(async (req, res) => {
     const body = materialSchema.parse(req.body);
     const { rows } = await pool.query(
@@ -65,7 +65,7 @@ inventoryRouter.post(
 // flipping it off here removes the material from view everywhere immediately without touching history.
 inventoryRouter.delete(
   '/catalog/:id',
-  requireRole('admin', 'dispatcher', 'crew_lead'),
+  requireRole('admin', 'crew_lead'),
   asyncHandler(async (req, res) => {
     const { rows } = await pool.query(
       `UPDATE material_catalog SET is_active = false WHERE id = $1 RETURNING id`,
@@ -169,7 +169,7 @@ const needSchema = z.object({ materialId: z.string().uuid(), quantityNeeded: z.n
 
 inventoryRouter.put(
   '/need/:jobId',
-  requireRole('admin', 'dispatcher', 'crew_lead'),
+  requireRole('admin', 'crew_lead'),
   asyncHandler(async (req, res) => {
     const body = needSchema.parse(req.body);
     await pool.query(

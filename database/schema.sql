@@ -12,7 +12,7 @@ CREATE EXTENSION IF NOT EXISTS citext;
 -- ENUMS
 -- ============================================================================
 
-CREATE TYPE user_role            AS ENUM ('admin', 'dispatcher', 'crew_lead', 'technician');
+CREATE TYPE user_role            AS ENUM ('admin', 'crew_lead', 'crew');
 CREATE TYPE job_status           AS ENUM ('draft', 'scheduled', 'dispatched', 'in_progress', 'blocked', 'completed', 'closed', 'cancelled');
 CREATE TYPE job_priority         AS ENUM ('low', 'medium', 'high', 'urgent');
 CREATE TYPE inventory_txn_type   AS ENUM ('add', 'subtract', 'transfer_out', 'transfer_in', 'qr_transfer', 'job_consumption', 'stock_correction');
@@ -32,7 +32,7 @@ CREATE TABLE users (
     password_hash      TEXT NOT NULL,
     full_name          TEXT NOT NULL,
     phone              TEXT,
-    role               user_role NOT NULL DEFAULT 'technician',
+    role               user_role NOT NULL DEFAULT 'crew',
     hourly_rate_cents  INTEGER NOT NULL DEFAULT 0 CHECK (hourly_rate_cents >= 0),
     is_active          BOOLEAN NOT NULL DEFAULT TRUE,
     created_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -339,6 +339,7 @@ CREATE TABLE documents (
     title              TEXT NOT NULL,
     doc_type           TEXT NOT NULL, -- file extension or MIME type; free-form, any file type is allowed
     category           TEXT,
+    description        TEXT, -- free-form notes, e.g. a color legend for an annotated map/photo
     job_id             UUID REFERENCES jobs(id) ON DELETE SET NULL,
     current_version    INTEGER NOT NULL DEFAULT 1,
     is_map             BOOLEAN NOT NULL DEFAULT FALSE,

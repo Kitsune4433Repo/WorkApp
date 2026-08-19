@@ -10,7 +10,7 @@ usersRouter.use(requireAuth);
 
 usersRouter.get(
   '/',
-  requireRole('admin', 'dispatcher', 'crew_lead'),
+  requireRole('admin', 'crew_lead'),
   asyncHandler(async (_req, res) => {
     const { rows } = await pool.query(
       `SELECT id, email, full_name, role, phone, hourly_rate_cents, is_active
@@ -24,7 +24,7 @@ const createUserSchema = z.object({
   email: z.string().email(),
   password: z.string().min(8),
   fullName: z.string().min(1),
-  role: z.enum(['admin', 'dispatcher', 'crew_lead', 'technician']),
+  role: z.enum(['admin', 'crew_lead', 'crew']),
   phone: z.string().optional(),
   hourlyRateCents: z.number().int().min(0).default(0),
 });

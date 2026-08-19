@@ -42,8 +42,8 @@ class LoginViewModel @Inject constructor(private val repository: AuthRepository)
     }
 }
 
-/** Entry point for all four roles; dispatchers/admins typically use the web portal instead, but
- * can sign in here too since the API and role checks are identical on both clients. */
+/** Entry point for all three roles (admin, crew lead, crew); admins typically use the web portal
+ * instead, but can sign in here too since the API and role checks are identical on both clients. */
 @Composable
 fun LoginScreen(viewModel: LoginViewModel = hiltViewModel(), onLoggedIn: () -> Unit) {
     var email by remember { mutableStateOf("") }

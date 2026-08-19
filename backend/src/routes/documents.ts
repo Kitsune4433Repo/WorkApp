@@ -19,13 +19,14 @@ const createDocSchema = z.object({
   title: z.string().min(1),
   docType: z.string().min(1), // free-form: file extension or MIME type, any file type is allowed
   category: z.string().optional(),
+  description: z.string().optional(), // e.g. a color legend for an annotated map/photo
   jobId: z.string().uuid().optional(),
   isMap: z.coerce.boolean().default(false),
 });
 
 documentsRouter.post(
   '/',
-  requireRole('admin', 'dispatcher', 'crew_lead'),
+  requireRole('admin', 'crew_lead'),
   upload.single('file'),
   asyncHandler(async (req, res) => {
     if (!req.file) throw new ApiError(400, 'file_required');
@@ -41,9 +42,9 @@ documentsRouter.post(
 
     const doc = await withTransaction(async (client) => {
       const { rows } = await client.query(
-        `INSERT INTO documents (title, doc_type, category, job_id, is_map, uploaded_by)
-         VALUES ($1,$2,$3,$4,$5,$6) RETURNING id`,
-        [body.title, body.docType, body.category ?? null, body.jobId ?? null, body.isMap, req.user!.id],
+        `INSERT INTO documents (title, doc_type, category, description, job_id, is_map, uploaded_by)
+         VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id`,
+        [body.title, body.docType, body.category ?? null, body.description ?? null, body.jobId ?? null, body.isMap, req.user!.id],
       );
       await client.query(
         `INSERT INTO document_versions (document_id, version_number, file_url, file_size_bytes, checksum_sha256, uploaded_by)
@@ -60,7 +61,7 @@ documentsRouter.post(
 // Append a new version to an existing document (re-upload / revised map).
 documentsRouter.post(
   '/:documentId/versions',
-  requireRole('admin', 'dispatcher', 'crew_lead'),
+  requireRole('admin', 'crew_lead'),
   upload.single('file'),
   asyncHandler(async (req, res) => {
     if (!req.file) throw new ApiError(400, 'file_required');
@@ -97,12 +98,38 @@ documentsRouter.post(
   }),
 );
 
+const updateDocSchema = z.object({
+  title: z.string().min(1).optional(),
+  category: z.string().optional(),
+  description: z.string().optional(),
+});
+
+documentsRouter.patch(
+  '/:documentId',
+  requireRole('admin', 'crew_lead'),
+  asyncHandler(async (req, res) => {
+    const body = updateDocSchema.parse(req.body);
+    const { rows } = await pool.query(
+      `UPDATE documents SET
+          title = COALESCE($2, title),
+          category = COALESCE($3, category),
+          description = COALESCE($4, description),
+          updated_at = now()
+        WHERE id = $1
+        RETURNING id`,
+      [req.params.documentId, body.title ?? null, body.category ?? null, body.description ?? null],
+    );
+    if (!rows.length) throw new ApiError(404, 'document_not_found');
+    res.status(204).end();
+  }),
+);
+
 // document_versions and map_annotations both cascade on document_id, so removing the documents
 // row cleans up the DB side; the object storage files aren't referenced anywhere else, so they're
 // removed too (best-effort — see deleteObject).
 documentsRouter.delete(
   '/:documentId',
-  requireRole('admin', 'dispatcher', 'crew_lead'),
+  requireRole('admin', 'crew_lead'),
   asyncHandler(async (req, res) => {
     const { rows: versionRows } = await pool.query(`SELECT file_url FROM document_versions WHERE document_id = $1`, [
       req.params.documentId,
@@ -129,7 +156,7 @@ documentsRouter.get(
       where.push(`is_map = $${params.length}`);
     }
     const { rows } = await pool.query(
-      `SELECT id, title, doc_type, category, job_id, current_version, is_map, updated_at
+      `SELECT id, title, doc_type, category, description, job_id, current_version, is_map, updated_at
          FROM documents ${where.length ? 'WHERE ' + where.join(' AND ') : ''} ORDER BY updated_at DESC`,
       params,
     );
@@ -157,7 +184,10 @@ documentsRouter.get(
 const annotationSchema = z.object({
   documentVersion: z.number().int(),
   layerData: z.any(),
-  clientVersion: z.number().int(),
+  // node-pg returns BIGINT columns (map_annotations.version) as strings — coerce defensively here
+  // in case a client ever round-trips one back without converting it (see the ::int casts below,
+  // which fix this at the source for both endpoints in this file).
+  clientVersion: z.coerce.number().int(),
   clientId: z.string(),
 });
 
@@ -168,7 +198,7 @@ documentsRouter.put(
 
     await withTransaction(async (client) => {
       const { rows } = await client.query(
-        `SELECT id, version, layer_data FROM map_annotations
+        `SELECT id, version::int AS version, layer_data FROM map_annotations
           WHERE document_id = $1 AND created_by = $2
           ORDER BY created_at DESC LIMIT 1 FOR UPDATE`,
         [req.params.documentId, req.user!.id],
@@ -206,7 +236,7 @@ documentsRouter.get(
   '/:documentId/annotations',
   asyncHandler(async (req, res) => {
     const { rows } = await pool.query(
-      `SELECT DISTINCT ON (created_by) created_by, layer_data, version, updated_at
+      `SELECT DISTINCT ON (created_by) created_by, layer_data, version::int AS version, updated_at
          FROM map_annotations WHERE document_id = $1
          ORDER BY created_by, created_at DESC`,
       [req.params.documentId],

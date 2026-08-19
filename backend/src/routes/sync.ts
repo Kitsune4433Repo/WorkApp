@@ -46,7 +46,7 @@ syncRouter.get(
     let rows: unknown[];
     if (entityType === 'jobs') {
       // Field roles only pull jobs assigned to them; office roles see the full changed set.
-      const isFieldRole = req.user!.role === 'technician' || req.user!.role === 'crew_lead';
+      const isFieldRole = req.user!.role === 'crew' || req.user!.role === 'crew_lead';
       const params: unknown[] = [since];
       let assignmentFilter = '';
       if (isFieldRole) {
@@ -73,7 +73,7 @@ syncRouter.get(
 // Admin review queue for flagged offline-merge conflicts (feature 9).
 syncRouter.get(
   '/conflicts',
-  requireRole('admin', 'dispatcher'),
+  requireRole('admin', 'crew_lead'),
   asyncHandler(async (_req, res) => {
     const { rows } = await pool.query(
       `SELECT id, entity_type, entity_id, device_id, user_id, client_payload, server_payload,
@@ -88,7 +88,7 @@ const resolveSchema = z.object({ resolution: z.enum(['client_wins', 'server_wins
 
 syncRouter.post(
   '/conflicts/:id/resolve',
-  requireRole('admin', 'dispatcher'),
+  requireRole('admin', 'crew_lead'),
   asyncHandler(async (req, res) => {
     const body = resolveSchema.parse(req.body);
     const { rows } = await pool.query(`SELECT * FROM sync_conflicts WHERE id = $1`, [req.params.id]);
