@@ -1,0 +1,21 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Hub-and-spoke mark: a center node with three connections — reads as both a distribution
+         hub (the telecom/utility domain this app serves) and a crew converging on one point.
+         Kept inside the ~66dp adaptive-icon safe zone so it isn't clipped by launcher masks. -->
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="4"
+        android:strokeLineCap="round"
+        android:pathData="M54,54 L54,28 M54,54 L76.5,67 M54,54 L31.5,67" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="
+            M46,54 a8,8 0 1,0 16,0 a8,8 0 1,0 -16,0
+            M48,28 a6,6 0 1,0 12,0 a6,6 0 1,0 -12,0
+            M70.5,67 a6,6 0 1,0 12,0 a6,6 0 1,0 -12,0
+            M25.5,67 a6,6 0 1,0 12,0 a6,6 0 1,0 -12,0" />
+</vector>
