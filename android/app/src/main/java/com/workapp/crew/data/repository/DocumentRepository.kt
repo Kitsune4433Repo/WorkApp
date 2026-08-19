@@ -4,6 +4,7 @@ import android.content.Context
 import com.workapp.crew.data.local.dao.DocumentDao
 import com.workapp.crew.data.remote.ApiService
 import com.workapp.crew.di.RawHttpClient
+import com.workapp.crew.sync.SyncWorker
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -31,6 +32,11 @@ class DocumentRepository @Inject constructor(
 ) {
     fun observeAll() = dao.observeAll()
     fun observeMaps() = dao.observeMaps()
+
+    /** Pulls fresh document/map metadata (see SyncWorker.pullDocuments) — the local Room cache
+     * otherwise only updates on the 15-minute background schedule, or after some unrelated write
+     * elsewhere happens to trigger a sync. */
+    fun refresh() = SyncWorker.triggerImmediateSync(context)
 
     suspend fun ensureCached(documentId: String, existingLocalPath: String?): DownloadResult {
         if (existingLocalPath != null && File(existingLocalPath).exists()) {

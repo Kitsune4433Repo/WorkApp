@@ -46,23 +46,33 @@ class SyncWorker @AssistedInject constructor(
     override suspend fun doWork(): Result {
         if (tokenStore.accessToken == null) return Result.success()
 
-        return try {
-            pushInventoryDeltas()
-            pushTimecards()
-            pushLocationPings()
-            pushChatMessages()
-            pushMapAnnotations()
-            pushPhotoProofs()
-            pullMaterials()
-            pullJobs()
-            pullDocuments()
-            pullHaveLedger()
-            Result.success()
-        } catch (e: Exception) {
-            // Network/5xx failures retry with WorkManager's backoff; validation errors (4xx) would
-            // surface via a distinct exception type in a full implementation and should NOT retry.
-            Result.retry()
+        // Each step runs independently: a device with one persistently-failing item (a bad photo
+        // upload, a 409'd annotation) used to abort the entire cycle via one shared catch block,
+        // silently blocking every step listed after it — including pulling jobs/documents/the have
+        // ledger, even though those don't depend on the failing step at all.
+        var anyFailed = false
+        suspend fun step(block: suspend () -> Unit) {
+            try {
+                block()
+            } catch (e: Exception) {
+                anyFailed = true
+            }
         }
+
+        step { pushInventoryDeltas() }
+        step { pushTimecards() }
+        step { pushLocationPings() }
+        step { pushChatMessages() }
+        step { pushMapAnnotations() }
+        step { pushPhotoProofs() }
+        step { pullMaterials() }
+        step { pullJobs() }
+        step { pullDocuments() }
+        step { pullHaveLedger() }
+
+        // Network/5xx failures retry with WorkManager's backoff; validation errors (4xx) would
+        // surface via a distinct exception type in a full implementation and should NOT retry.
+        return if (anyFailed) Result.retry() else Result.success()
     }
 
     private suspend fun pushInventoryDeltas() {

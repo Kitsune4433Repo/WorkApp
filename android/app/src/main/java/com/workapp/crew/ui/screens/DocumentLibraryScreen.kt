@@ -22,6 +22,7 @@ import androidx.lifecycle.viewModelScope
 import com.workapp.crew.data.local.entities.DocumentEntity
 import com.workapp.crew.data.repository.DocumentRepository
 import com.workapp.crew.data.repository.DownloadResult
+import com.workapp.crew.ui.util.PeriodicRefresh
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.stateIn
@@ -32,6 +33,8 @@ import javax.inject.Inject
 @HiltViewModel
 class DocumentLibraryViewModel @Inject constructor(private val repository: DocumentRepository) : ViewModel() {
     val documents = repository.observeAll().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    fun refresh() = repository.refresh()
 
     var downloadingId by mutableStateOf<String?>(null)
         private set
@@ -56,6 +59,7 @@ class DocumentLibraryViewModel @Inject constructor(private val repository: Docum
 fun DocumentLibraryScreen(viewModel: DocumentLibraryViewModel = hiltViewModel(), onOpenMap: (String) -> Unit) {
     val context = LocalContext.current
     val documents by viewModel.documents.collectAsState()
+    PeriodicRefresh { viewModel.refresh() }
 
     Column(Modifier.fillMaxSize().padding(16.dp)) {
         Text("Document & Map Library", style = MaterialTheme.typography.headlineSmall)
