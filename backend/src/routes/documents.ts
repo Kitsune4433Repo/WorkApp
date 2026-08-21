@@ -147,6 +147,10 @@ const updateDocSchema = z.object({
   title: z.string().min(1).optional(),
   category: z.string().optional(),
   description: z.string().optional(),
+  // Nullable (unlike the fields above) so a resource can be explicitly unlinked from a job, not
+  // just linked — distinguished from "field omitted" via the hasJobId flag below rather than
+  // COALESCE, since COALESCE can never represent "set this back to NULL".
+  jobId: z.string().uuid().nullable().optional(),
 });
 
 documentsRouter.patch(
@@ -154,15 +158,17 @@ documentsRouter.patch(
   requireRole('admin', 'crew_lead'),
   asyncHandler(async (req, res) => {
     const body = updateDocSchema.parse(req.body);
+    const hasJobId = 'jobId' in req.body;
     const { rows } = await pool.query(
       `UPDATE documents SET
           title = COALESCE($2, title),
           category = COALESCE($3, category),
           description = COALESCE($4, description),
+          job_id = CASE WHEN $5 THEN $6::uuid ELSE job_id END,
           updated_at = now()
         WHERE id = $1
         RETURNING id`,
-      [req.params.documentId, body.title ?? null, body.category ?? null, body.description ?? null],
+      [req.params.documentId, body.title ?? null, body.category ?? null, body.description ?? null, hasJobId, body.jobId ?? null],
     );
     if (!rows.length) throw new ApiError(404, 'document_not_found');
     res.status(204).end();

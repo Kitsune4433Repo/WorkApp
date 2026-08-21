@@ -13,7 +13,14 @@ interface Document {
   is_map: boolean;
   current_version: number;
   location_group_id: string | null;
+  job_id: string | null;
   updated_at: string;
+}
+
+interface Job {
+  id: string;
+  job_number: string;
+  title: string;
 }
 
 const CATEGORIES = ['Production', 'Property Map'] as const;
@@ -61,10 +68,20 @@ export function UploadCenter() {
   const [editTitle, setEditTitle] = useState('');
   const [editDescription, setEditDescription] = useState('');
 
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [assignJobSelect, setAssignJobSelect] = useState('');
+
   const { data: documents } = useQuery<Document[]>({
     queryKey: ['documents'],
     queryFn: async () => (await api.get('/documents')).data,
   });
+
+  const { data: jobs } = useQuery<Job[]>({
+    queryKey: ['jobs'],
+    queryFn: async () => (await api.get('/jobs')).data,
+    enabled: !!user && MANAGE_ROLES.includes(user.role),
+  });
+  const jobsById = new Map((jobs ?? []).map((j) => [j.id, j]));
 
   const uploadMutation = useMutation({
     mutationFn: async () => {
@@ -114,6 +131,12 @@ export function UploadCenter() {
     },
   });
 
+  const assignJobMutation = useMutation({
+    mutationFn: (params: { ids: string[]; jobId: string | null }) =>
+      Promise.all(params.ids.map((id) => api.patch(`/documents/${id}`, { jobId: params.jobId }))),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['documents'] }),
+  });
+
   function onSubmit(e: FormEvent) {
     e.preventDefault();
     uploadMutation.mutate();
@@ -143,6 +166,30 @@ export function UploadCenter() {
     setEditingId(groupKey);
     setEditTitle(currentTitle);
     setEditDescription(currentDescription ?? '');
+  }
+
+  // A group's checkbox toggles every member id together — checked only once ALL of them are
+  // already selected, so a partially-selected group still reads as "click to select the rest".
+  function toggleSelection(ids: string[]) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      const allSelected = ids.every((id) => next.has(id));
+      ids.forEach((id) => (allSelected ? next.delete(id) : next.add(id)));
+      return next;
+    });
+  }
+
+  function assignSelectedToJob() {
+    if (!assignJobSelect) return;
+    assignJobMutation.mutate(
+      { ids: [...selectedIds], jobId: assignJobSelect },
+      {
+        onSuccess: () => {
+          setSelectedIds(new Set());
+          setAssignJobSelect('');
+        },
+      },
+    );
   }
 
   const canManage = !!user && MANAGE_ROLES.includes(user.role);
@@ -206,6 +253,39 @@ export function UploadCenter() {
         )}
       </form>
 
+      {canManage && selectedIds.size > 0 && (
+        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-brand-300 bg-brand-50 px-4 py-2.5 text-sm">
+          <span className="font-medium text-brand-800">{selectedIds.size} selected</span>
+          <select
+            value={assignJobSelect}
+            onChange={(e) => setAssignJobSelect(e.target.value)}
+            className="rounded-md border border-slate-300 px-2 py-1.5 text-sm"
+          >
+            <option value="">Assign to job…</option>
+            {jobs?.map((j) => (
+              <option key={j.id} value={j.id}>
+                {j.job_number} — {j.title}
+              </option>
+            ))}
+          </select>
+          <button
+            type="button"
+            disabled={!assignJobSelect || assignJobMutation.isPending}
+            onClick={assignSelectedToJob}
+            className="rounded-md bg-brand-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-brand-700 disabled:opacity-50"
+          >
+            Assign
+          </button>
+          <button
+            type="button"
+            onClick={() => setSelectedIds(new Set())}
+            className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-50"
+          >
+            Cancel selection
+          </button>
+        </div>
+      )}
+
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {groupDocuments(documents ?? []).map((entry) =>
           Array.isArray(entry) ? (
@@ -225,6 +305,10 @@ export function UploadCenter() {
               onOpen={(doc) => openMutation.mutate(doc)}
               onDelete={onDelete}
               deletingId={deleteMutation.isPending ? (deleteMutation.variables as string) : null}
+              selected={entry.every((d) => selectedIds.has(d.id))}
+              onToggleSelect={() => toggleSelection(entry.map((d) => d.id))}
+              job={entry[0].job_id ? jobsById.get(entry[0].job_id) : undefined}
+              onUnassign={() => assignJobMutation.mutate({ ids: entry.map((d) => d.id), jobId: null })}
             />
           ) : (
             <DocumentCard
@@ -243,6 +327,10 @@ export function UploadCenter() {
               onOpen={() => openMutation.mutate(entry)}
               onDelete={() => onDelete(entry)}
               deleting={deleteMutation.isPending && deleteMutation.variables === entry.id}
+              selected={selectedIds.has(entry.id)}
+              onToggleSelect={() => toggleSelection([entry.id])}
+              job={entry.job_id ? jobsById.get(entry.job_id) : undefined}
+              onUnassign={() => assignJobMutation.mutate({ ids: [entry.id], jobId: null })}
             />
           ),
         )}
@@ -316,17 +404,40 @@ function MetadataBlock({ description, ...props }: { description: string | null }
   return description ? <p className="mt-1.5 whitespace-pre-wrap text-xs text-slate-500">{description}</p> : null;
 }
 
+/** Small pill showing the job a resource is assigned to, with a one-tap way to unassign it. */
+function JobChip({ job, canManage, onUnassign }: { job: Job | undefined; canManage: boolean; onUnassign: () => void }) {
+  if (!job) return null;
+  return (
+    <span className="mt-1.5 inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-xs text-emerald-700">
+      {job.job_number} — {job.title}
+      {canManage && (
+        <button type="button" onClick={onUnassign} aria-label={`Remove from job ${job.job_number}`} className="font-bold text-emerald-500 hover:text-red-600">
+          ×
+        </button>
+      )}
+    </span>
+  );
+}
+
 function DocumentCard({
   doc,
   onOpen,
   onDelete,
   deleting,
+  selected,
+  onToggleSelect,
+  job,
+  onUnassign,
   ...editProps
 }: {
   doc: Document;
   onOpen: () => void;
   onDelete: () => void;
   deleting: boolean;
+  selected: boolean;
+  onToggleSelect: () => void;
+  job: Job | undefined;
+  onUnassign: () => void;
 } & MetadataEditProps) {
   return (
     <div className="rounded-lg border border-slate-200 bg-white p-4 hover:border-brand-300 hover:shadow-sm">
@@ -337,17 +448,29 @@ function DocumentCard({
           <span>v{doc.current_version}</span>
         </div>
       ) : (
-        <button onClick={onOpen} className="w-full text-left">
-          <div className="font-medium text-slate-900">{doc.title}</div>
-          <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-500">
-            <span className="rounded-full bg-slate-100 px-2 py-0.5 uppercase">{doc.doc_type}</span>
-            {doc.category && <span className="rounded-full bg-brand-50 px-2 py-0.5 text-brand-700">{doc.category}</span>}
-            <span>v{doc.current_version}</span>
-            {IMAGE_EXTENSIONS.has(doc.doc_type.toLowerCase()) && <span className="text-brand-600">draw/highlight</span>}
-          </div>
-        </button>
+        <div className="flex items-start gap-2">
+          {editProps.canManage && (
+            <input
+              type="checkbox"
+              checked={selected}
+              onChange={onToggleSelect}
+              aria-label={`Select ${doc.title}`}
+              className="mt-1 h-4 w-4 shrink-0 rounded border-slate-300"
+            />
+          )}
+          <button onClick={onOpen} className="w-full text-left">
+            <div className="font-medium text-slate-900">{doc.title}</div>
+            <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-500">
+              <span className="rounded-full bg-slate-100 px-2 py-0.5 uppercase">{doc.doc_type}</span>
+              {doc.category && <span className="rounded-full bg-brand-50 px-2 py-0.5 text-brand-700">{doc.category}</span>}
+              <span>v{doc.current_version}</span>
+              {IMAGE_EXTENSIONS.has(doc.doc_type.toLowerCase()) && <span className="text-brand-600">draw/highlight</span>}
+            </div>
+          </button>
+        </div>
       )}
 
+      <JobChip job={job} canManage={editProps.canManage} onUnassign={onUnassign} />
       <MetadataBlock description={doc.description} {...editProps} />
 
       <div className="mt-2 flex gap-1.5">
@@ -374,12 +497,20 @@ function GroupedDocumentCard({
   onOpen,
   onDelete,
   deletingId,
+  selected,
+  onToggleSelect,
+  job,
+  onUnassign,
   ...editProps
 }: {
   docs: Document[];
   onOpen: (doc: Document) => void;
   onDelete: (doc: Document) => void;
   deletingId: string | null;
+  selected: boolean;
+  onToggleSelect: () => void;
+  job: Job | undefined;
+  onUnassign: () => void;
 } & MetadataEditProps) {
   const first = docs[0];
   return (
@@ -388,9 +519,23 @@ function GroupedDocumentCard({
         <span aria-hidden>📍</span>
         Same location · {docs.length} files
       </div>
-      {!editProps.editing && <div className="font-medium text-slate-900">{first.title}</div>}
-      {first.category && <span className="mt-1 inline-block rounded-full bg-brand-100 px-2 py-0.5 text-xs text-brand-700">{first.category}</span>}
+      <div className="flex items-start gap-2">
+        {editProps.canManage && (
+          <input
+            type="checkbox"
+            checked={selected}
+            onChange={onToggleSelect}
+            aria-label={`Select ${first.title} group`}
+            className="mt-1 h-4 w-4 shrink-0 rounded border-slate-300"
+          />
+        )}
+        <div>
+          {!editProps.editing && <div className="font-medium text-slate-900">{first.title}</div>}
+          {first.category && <span className="mt-1 inline-block rounded-full bg-brand-100 px-2 py-0.5 text-xs text-brand-700">{first.category}</span>}
+        </div>
+      </div>
 
+      <JobChip job={job} canManage={editProps.canManage} onUnassign={onUnassign} />
       <MetadataBlock description={first.description} {...editProps} />
 
       {editProps.canManage && !editProps.editing && (
