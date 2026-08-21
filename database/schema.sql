@@ -344,10 +344,14 @@ CREATE TABLE documents (
     current_version    INTEGER NOT NULL DEFAULT 1,
     is_map             BOOLEAN NOT NULL DEFAULT FALSE,
     uploaded_by        UUID REFERENCES users(id) ON DELETE SET NULL,
+    -- Shared by every file from the same multi-file upload (e.g. several photos of one site) so the
+    -- Resource Library can visually group them as "the same location"; NULL for a solo upload.
+    location_group_id  UUID,
     created_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at         TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX idx_documents_job ON documents (job_id);
+CREATE INDEX idx_documents_location_group ON documents (location_group_id);
 
 CREATE TABLE document_versions (
     id                 UUID PRIMARY KEY DEFAULT uuid_generate_v4(),

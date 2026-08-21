@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import multer from 'multer';
 import crypto from 'crypto';
+import { v4 as uuid } from 'uuid';
 import { z } from 'zod';
 import { pool, withTransaction } from '../config/database';
 import { requireAuth, requireRole } from '../middleware/auth';
@@ -17,44 +18,79 @@ const upload = multer({ limits: { fileSize: 200 * 1024 * 1024 } });
 
 const createDocSchema = z.object({
   title: z.string().min(1),
-  docType: z.string().min(1), // free-form: file extension or MIME type, any file type is allowed
+  // Optional now that docType is derived per-file server-side (see deriveDocType) — a single
+  // client-supplied value never made sense once one request can carry files of different types.
+  // Still accepted so an already-built client (e.g. Android) that sends it keeps working unchanged.
+  docType: z.string().optional(),
   category: z.string().optional(),
   description: z.string().optional(), // e.g. a color legend for an annotated map/photo
   jobId: z.string().uuid().optional(),
   isMap: z.coerce.boolean().default(false),
 });
 
+// Any file type is allowed — this just labels what was uploaded. Mirrors web's deriveDocType.
+function deriveDocType(originalName: string, mimetype: string): string {
+  const extMatch = /\.([a-zA-Z0-9]+)$/.exec(originalName);
+  if (extMatch) return extMatch[1].toLowerCase();
+  return mimetype.split('/')[1] ?? 'file';
+}
+
 documentsRouter.post(
   '/',
   requireRole('admin', 'crew_lead'),
-  upload.single('file'),
+  // 'files' is the multi-upload field (web's "put 2+ files in one upload" flow); 'file' is the
+  // original single-file field, kept so already-built clients (Android) don't need to change.
+  upload.fields([
+    { name: 'files', maxCount: 20 },
+    { name: 'file', maxCount: 1 },
+  ]),
   asyncHandler(async (req, res) => {
-    if (!req.file) throw new ApiError(400, 'file_required');
+    const fileFields = req.files as Record<string, Express.Multer.File[]> | undefined;
+    const files = [...(fileFields?.files ?? []), ...(fileFields?.file ?? [])];
+    if (!files.length) throw new ApiError(400, 'file_required');
     const body = createDocSchema.parse(req.body);
 
-    const checksum = crypto.createHash('sha256').update(req.file.buffer).digest('hex');
-    let key: string;
-    try {
-      key = await uploadBuffer('documents', req.file.buffer, req.file.mimetype);
-    } catch (err) {
-      throw new ApiError(502, 'upload_failed', { message: err instanceof Error ? err.message : String(err) });
-    }
+    // A shared id lets the Resource Library visually cluster files from the same upload as "the
+    // same location" — only meaningful when there's more than one, so a solo upload stays ungrouped
+    // exactly as it always has.
+    const locationGroupId = files.length > 1 ? uuid() : null;
 
-    const doc = await withTransaction(async (client) => {
-      const { rows } = await client.query(
-        `INSERT INTO documents (title, doc_type, category, description, job_id, is_map, uploaded_by)
-         VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id`,
-        [body.title, body.docType, body.category ?? null, body.description ?? null, body.jobId ?? null, body.isMap, req.user!.id],
-      );
-      await client.query(
-        `INSERT INTO document_versions (document_id, version_number, file_url, file_size_bytes, checksum_sha256, uploaded_by)
-         VALUES ($1,1,$2,$3,$4,$5)`,
-        [rows[0].id, key, req.file!.size, checksum, req.user!.id],
-      );
-      return rows[0];
+    const ids = await withTransaction(async (client) => {
+      const docIds: string[] = [];
+      for (const file of files) {
+        const checksum = crypto.createHash('sha256').update(file.buffer).digest('hex');
+        let key: string;
+        try {
+          key = await uploadBuffer('documents', file.buffer, file.mimetype);
+        } catch (err) {
+          throw new ApiError(502, 'upload_failed', { message: err instanceof Error ? err.message : String(err) });
+        }
+
+        const { rows } = await client.query(
+          `INSERT INTO documents (title, doc_type, category, description, job_id, is_map, uploaded_by, location_group_id)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id`,
+          [
+            body.title,
+            deriveDocType(file.originalname, file.mimetype),
+            body.category ?? null,
+            body.description ?? null,
+            body.jobId ?? null,
+            body.isMap,
+            req.user!.id,
+            locationGroupId,
+          ],
+        );
+        await client.query(
+          `INSERT INTO document_versions (document_id, version_number, file_url, file_size_bytes, checksum_sha256, uploaded_by)
+           VALUES ($1,1,$2,$3,$4,$5)`,
+          [rows[0].id, key, file.size, checksum, req.user!.id],
+        );
+        docIds.push(rows[0].id);
+      }
+      return docIds;
     });
 
-    res.status(201).json({ id: doc.id });
+    res.status(201).json({ ids, locationGroupId });
   }),
 );
 
@@ -156,7 +192,7 @@ documentsRouter.get(
       where.push(`is_map = $${params.length}`);
     }
     const { rows } = await pool.query(
-      `SELECT id, title, doc_type, category, description, job_id, current_version, is_map, updated_at
+      `SELECT id, title, doc_type, category, description, job_id, current_version, is_map, location_group_id, updated_at
          FROM documents ${where.length ? 'WHERE ' + where.join(' AND ') : ''} ORDER BY updated_at DESC`,
       params,
     );
