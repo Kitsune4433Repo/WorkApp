@@ -70,18 +70,28 @@ export function UploadCenter() {
 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [assignJobSelect, setAssignJobSelect] = useState('');
+  // 'all' | 'unassigned' | a job id — lets anyone browse the library scoped to one job's resources.
+  const [jobFilter, setJobFilter] = useState('all');
 
   const { data: documents } = useQuery<Document[]>({
     queryKey: ['documents'],
     queryFn: async () => (await api.get('/documents')).data,
   });
 
+  // Available to every role, not just admin/crew_lead — filtering by job is a read-only view,
+  // separate from the (manage-only) ability to assign a resource to one.
   const { data: jobs } = useQuery<Job[]>({
     queryKey: ['jobs'],
     queryFn: async () => (await api.get('/jobs')).data,
-    enabled: !!user && MANAGE_ROLES.includes(user.role),
+    enabled: !!user,
   });
   const jobsById = new Map((jobs ?? []).map((j) => [j.id, j]));
+
+  const visibleDocuments = (documents ?? []).filter((doc) => {
+    if (jobFilter === 'all') return true;
+    if (jobFilter === 'unassigned') return !doc.job_id;
+    return doc.job_id === jobFilter;
+  });
 
   const uploadMutation = useMutation({
     mutationFn: async () => {
@@ -253,6 +263,26 @@ export function UploadCenter() {
         )}
       </form>
 
+      <div className="flex items-center gap-2">
+        <label htmlFor="job-filter" className="text-sm font-medium text-slate-600">
+          Filter by job
+        </label>
+        <select
+          id="job-filter"
+          value={jobFilter}
+          onChange={(e) => setJobFilter(e.target.value)}
+          className="rounded-md border border-slate-300 px-2 py-1.5 text-sm"
+        >
+          <option value="all">All resources</option>
+          <option value="unassigned">Unassigned</option>
+          {jobs?.map((j) => (
+            <option key={j.id} value={j.id}>
+              {j.job_number} — {j.title}
+            </option>
+          ))}
+        </select>
+      </div>
+
       {canManage && selectedIds.size > 0 && (
         <div className="flex flex-wrap items-center gap-2 rounded-lg border border-brand-300 bg-brand-50 px-4 py-2.5 text-sm">
           <span className="font-medium text-brand-800">{selectedIds.size} selected</span>
@@ -287,7 +317,7 @@ export function UploadCenter() {
       )}
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {groupDocuments(documents ?? []).map((entry) =>
+        {groupDocuments(visibleDocuments).map((entry) =>
           Array.isArray(entry) ? (
             <GroupedDocumentCard
               key={entry[0].location_group_id}
@@ -334,7 +364,11 @@ export function UploadCenter() {
             />
           ),
         )}
-        {!documents?.length && <p className="text-slate-400">Nothing uploaded yet.</p>}
+        {!visibleDocuments.length && (
+          <p className="text-slate-400">
+            {documents?.length ? 'No resources match this job filter.' : 'Nothing uploaded yet.'}
+          </p>
+        )}
       </div>
 
       {viewingImage && user && (
