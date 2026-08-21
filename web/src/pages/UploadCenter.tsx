@@ -1,4 +1,4 @@
-import { FormEvent, useState } from 'react';
+import { ChangeEvent, FormEvent, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api/client';
 import { useAuth } from '../context/AuthContext';
@@ -115,6 +115,20 @@ export function UploadCenter() {
     uploadMutation.mutate();
   }
 
+  // Adds to the existing selection rather than replacing it — a phone's file picker often launches
+  // the camera, which only ever returns one photo per tap, so building a multi-file batch means
+  // reopening the picker repeatedly. Resetting the input's value afterward makes that work even
+  // when the same filename comes back twice (some browsers won't fire onChange otherwise).
+  function onPickFiles(e: ChangeEvent<HTMLInputElement>) {
+    const picked = Array.from(e.target.files ?? []);
+    if (picked.length) setFiles((prev) => [...prev, ...picked]);
+    e.target.value = '';
+  }
+
+  function removeFile(index: number) {
+    setFiles((prev) => prev.filter((_, i) => i !== index));
+  }
+
   function onDelete(doc: Document) {
     if (window.confirm(`Delete "${doc.title}"? This cannot be undone.`)) {
       deleteMutation.mutate(doc.id);
@@ -144,13 +158,15 @@ export function UploadCenter() {
             </option>
           ))}
         </select>
-        <input
-          required
-          type="file"
-          multiple
-          onChange={(e) => setFiles(Array.from(e.target.files ?? []))}
-          className="text-sm sm:col-span-2 lg:col-span-1"
-        />
+        <div className="sm:col-span-2 lg:col-span-1">
+          <input id="upload-file-input" type="file" multiple onChange={onPickFiles} className="hidden" />
+          <label
+            htmlFor="upload-file-input"
+            className="inline-block w-full cursor-pointer rounded-md border border-slate-300 px-3 py-2 text-center text-sm text-slate-600 hover:bg-slate-50"
+          >
+            {files.length ? 'Add another file' : 'Choose file(s)'}
+          </label>
+        </div>
         <textarea
           placeholder="Description (optional) — e.g. what each annotation color means"
           value={description}
@@ -158,10 +174,23 @@ export function UploadCenter() {
           rows={2}
           className="rounded-md border border-slate-300 px-3 py-2 text-sm sm:col-span-2 lg:col-span-3"
         />
+        {files.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 sm:col-span-2 lg:col-span-4">
+            {files.map((f, i) => (
+              <span key={`${f.name}-${f.size}-${i}`} className="flex items-center gap-1 rounded-full bg-slate-100 px-2 py-1 text-xs text-slate-600">
+                {f.name}
+                <button type="button" onClick={() => removeFile(i)} aria-label={`Remove ${f.name}`} className="font-bold text-slate-400 hover:text-red-600">
+                  ×
+                </button>
+              </span>
+            ))}
+          </div>
+        )}
         {files.length > 1 && (
           <p className="text-xs text-slate-500 sm:col-span-2 lg:col-span-4">
             {files.length} files selected — same title, category, and description will apply to all, and they'll show up grouped
-            together as the same location.
+            together as the same location. On a phone, tap "Add another file" once per photo — your camera only hands back one
+            at a time.
           </p>
         )}
         <button type="submit" disabled={uploadMutation.isPending} className="rounded-md bg-brand-600 px-3 py-2 text-sm font-medium text-white hover:bg-brand-700">
