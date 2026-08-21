@@ -38,6 +38,13 @@ function uploadErrorMessage(error: unknown): string {
   return 'Failed to upload.';
 }
 
+// Numeric-aware ("#2" before "#10") so the list holds a stable position — sorting by recency
+// (the old behavior) meant renaming, re-describing, or assigning any single resource to a job
+// bumped it to the top and reshuffled the whole library on every edit.
+function compareTitles(a: Document, b: Document): number {
+  return a.title.localeCompare(b.title, undefined, { numeric: true, sensitivity: 'base' });
+}
+
 /** Clusters documents that came from the same multi-file upload (shared, non-null
  * location_group_id) into one entry, so the library can render them as one connected group
  * instead of several identical-looking, seemingly-unrelated cards. */
@@ -87,11 +94,13 @@ export function UploadCenter() {
   });
   const jobsById = new Map((jobs ?? []).map((j) => [j.id, j]));
 
-  const visibleDocuments = (documents ?? []).filter((doc) => {
-    if (jobFilter === 'all') return true;
-    if (jobFilter === 'unassigned') return !doc.job_id;
-    return doc.job_id === jobFilter;
-  });
+  const visibleDocuments = [...(documents ?? [])]
+    .sort(compareTitles)
+    .filter((doc) => {
+      if (jobFilter === 'all') return true;
+      if (jobFilter === 'unassigned') return !doc.job_id;
+      return doc.job_id === jobFilter;
+    });
 
   const uploadMutation = useMutation({
     mutationFn: async () => {
