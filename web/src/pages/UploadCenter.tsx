@@ -58,6 +58,7 @@ export function UploadCenter() {
   const [files, setFiles] = useState<File[]>([]);
   const [viewingImage, setViewingImage] = useState<{ doc: Document; url: string } | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [editTitle, setEditTitle] = useState('');
   const [editDescription, setEditDescription] = useState('');
 
   const { data: documents } = useQuery<Document[]>({
@@ -76,7 +77,10 @@ export function UploadCenter() {
       form.append('isMap', String(category === 'Property Map'));
       // Bounded so a broken object-store connection fails with a visible error instead of the
       // button being stuck on "Uploading…" forever with nothing to tell the user what's wrong.
-      await api.post('/documents', form, { headers: { 'Content-Type': 'multipart/form-data' }, timeout: 60_000 });
+      // Scales with file count — several phone photos over cellular can legitimately take a while
+      // even when nothing's broken, and a flat short timeout would misreport that as "stuck".
+      const timeout = 60_000 + (files.length - 1) * 30_000;
+      await api.post('/documents', form, { headers: { 'Content-Type': 'multipart/form-data' }, timeout });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['documents'] });
@@ -99,11 +103,11 @@ export function UploadCenter() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['documents'] }),
   });
 
-  // Edits the whole group at once — the description describes the location/shoot, not one
+  // Edits the whole group at once — the title/description describe the location/shoot, not one
   // individual file, so keeping every member in sync is the expected behavior after an edit too.
-  const updateDescriptionMutation = useMutation({
-    mutationFn: (params: { ids: string[]; description: string }) =>
-      Promise.all(params.ids.map((id) => api.patch(`/documents/${id}`, { description: params.description }))),
+  const updateMetadataMutation = useMutation({
+    mutationFn: (params: { ids: string[]; title: string; description: string }) =>
+      Promise.all(params.ids.map((id) => api.patch(`/documents/${id}`, { title: params.title, description: params.description }))),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['documents'] });
       setEditingId(null);
@@ -135,8 +139,9 @@ export function UploadCenter() {
     }
   }
 
-  function startEditingDescription(groupKey: string, currentDescription: string | null) {
+  function startEditing(groupKey: string, currentTitle: string, currentDescription: string | null) {
     setEditingId(groupKey);
+    setEditTitle(currentTitle);
     setEditDescription(currentDescription ?? '');
   }
 
@@ -209,12 +214,14 @@ export function UploadCenter() {
               docs={entry}
               canManage={canManage}
               editing={editingId === entry[0].location_group_id}
+              editTitle={editTitle}
               editDescription={editDescription}
+              onEditTitleChange={setEditTitle}
               onEditDescriptionChange={setEditDescription}
-              onStartEditing={() => startEditingDescription(entry[0].location_group_id!, entry[0].description)}
+              onStartEditing={() => startEditing(entry[0].location_group_id!, entry[0].title, entry[0].description)}
               onCancelEditing={() => setEditingId(null)}
-              onSaveDescription={() => updateDescriptionMutation.mutate({ ids: entry.map((d) => d.id), description: editDescription })}
-              savingDescription={updateDescriptionMutation.isPending}
+              onSave={() => updateMetadataMutation.mutate({ ids: entry.map((d) => d.id), title: editTitle, description: editDescription })}
+              saving={updateMetadataMutation.isPending}
               onOpen={(doc) => openMutation.mutate(doc)}
               onDelete={onDelete}
               deletingId={deleteMutation.isPending ? (deleteMutation.variables as string) : null}
@@ -225,12 +232,14 @@ export function UploadCenter() {
               doc={entry}
               canManage={canManage}
               editing={editingId === entry.id}
+              editTitle={editTitle}
               editDescription={editDescription}
+              onEditTitleChange={setEditTitle}
               onEditDescriptionChange={setEditDescription}
-              onStartEditing={() => startEditingDescription(entry.id, entry.description)}
+              onStartEditing={() => startEditing(entry.id, entry.title, entry.description)}
               onCancelEditing={() => setEditingId(null)}
-              onSaveDescription={() => updateDescriptionMutation.mutate({ ids: [entry.id], description: editDescription })}
-              savingDescription={updateDescriptionMutation.isPending}
+              onSave={() => updateMetadataMutation.mutate({ ids: [entry.id], title: editTitle, description: editDescription })}
+              saving={updateMetadataMutation.isPending}
               onOpen={() => openMutation.mutate(entry)}
               onDelete={() => onDelete(entry)}
               deleting={deleteMutation.isPending && deleteMutation.variables === entry.id}
@@ -255,32 +264,44 @@ export function UploadCenter() {
   );
 }
 
-interface DescriptionEditProps {
+interface MetadataEditProps {
   canManage: boolean;
   editing: boolean;
+  editTitle: string;
   editDescription: string;
+  onEditTitleChange: (v: string) => void;
   onEditDescriptionChange: (v: string) => void;
   onStartEditing: () => void;
   onCancelEditing: () => void;
-  onSaveDescription: () => void;
-  savingDescription: boolean;
+  onSave: () => void;
+  saving: boolean;
 }
 
-function DescriptionBlock({ description, ...props }: { description: string | null } & DescriptionEditProps) {
+/** Renders either the title + description as plain text, or (while editing) a form for both —
+ * renaming and re-describing are the same "edit details" action, since both describe what this
+ * resource (or, for a group, this location) is. */
+function MetadataBlock({ description, ...props }: { description: string | null } & MetadataEditProps) {
   if (props.editing) {
     return (
       <div className="mt-2 space-y-1.5">
-        <textarea
+        <input
           autoFocus
+          value={props.editTitle}
+          onChange={(e) => props.onEditTitleChange(e.target.value)}
+          placeholder="Title"
+          className="w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm font-medium"
+        />
+        <textarea
           value={props.editDescription}
           onChange={(e) => props.onEditDescriptionChange(e.target.value)}
+          placeholder="Description (optional)"
           rows={2}
           className="w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm"
         />
         <div className="flex gap-1.5">
           <button
-            onClick={props.onSaveDescription}
-            disabled={props.savingDescription}
+            onClick={props.onSave}
+            disabled={props.saving || !props.editTitle.trim()}
             className="rounded-md bg-brand-600 px-2 py-1 text-xs font-medium text-white hover:bg-brand-700"
           >
             Save
@@ -306,25 +327,33 @@ function DocumentCard({
   onOpen: () => void;
   onDelete: () => void;
   deleting: boolean;
-} & DescriptionEditProps) {
+} & MetadataEditProps) {
   return (
     <div className="rounded-lg border border-slate-200 bg-white p-4 hover:border-brand-300 hover:shadow-sm">
-      <button onClick={onOpen} className="w-full text-left">
-        <div className="font-medium text-slate-900">{doc.title}</div>
+      {editProps.editing ? (
         <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-500">
           <span className="rounded-full bg-slate-100 px-2 py-0.5 uppercase">{doc.doc_type}</span>
           {doc.category && <span className="rounded-full bg-brand-50 px-2 py-0.5 text-brand-700">{doc.category}</span>}
           <span>v{doc.current_version}</span>
-          {IMAGE_EXTENSIONS.has(doc.doc_type.toLowerCase()) && <span className="text-brand-600">draw/highlight</span>}
         </div>
-      </button>
+      ) : (
+        <button onClick={onOpen} className="w-full text-left">
+          <div className="font-medium text-slate-900">{doc.title}</div>
+          <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-500">
+            <span className="rounded-full bg-slate-100 px-2 py-0.5 uppercase">{doc.doc_type}</span>
+            {doc.category && <span className="rounded-full bg-brand-50 px-2 py-0.5 text-brand-700">{doc.category}</span>}
+            <span>v{doc.current_version}</span>
+            {IMAGE_EXTENSIONS.has(doc.doc_type.toLowerCase()) && <span className="text-brand-600">draw/highlight</span>}
+          </div>
+        </button>
+      )}
 
-      <DescriptionBlock description={doc.description} {...editProps} />
+      <MetadataBlock description={doc.description} {...editProps} />
 
       <div className="mt-2 flex gap-1.5">
         {editProps.canManage && !editProps.editing && (
           <button onClick={editProps.onStartEditing} className="rounded-md border border-slate-300 px-2 py-1 text-xs font-medium text-slate-600 hover:bg-slate-50">
-            {doc.description ? 'Edit description' : 'Add description'}
+            Rename / edit
           </button>
         )}
         {editProps.canManage && (
@@ -351,7 +380,7 @@ function GroupedDocumentCard({
   onOpen: (doc: Document) => void;
   onDelete: (doc: Document) => void;
   deletingId: string | null;
-} & DescriptionEditProps) {
+} & MetadataEditProps) {
   const first = docs[0];
   return (
     <div className="rounded-lg border-2 border-brand-200 bg-brand-50/40 p-4 sm:col-span-2">
@@ -359,14 +388,14 @@ function GroupedDocumentCard({
         <span aria-hidden>📍</span>
         Same location · {docs.length} files
       </div>
-      <div className="font-medium text-slate-900">{first.title}</div>
+      {!editProps.editing && <div className="font-medium text-slate-900">{first.title}</div>}
       {first.category && <span className="mt-1 inline-block rounded-full bg-brand-100 px-2 py-0.5 text-xs text-brand-700">{first.category}</span>}
 
-      <DescriptionBlock description={first.description} {...editProps} />
+      <MetadataBlock description={first.description} {...editProps} />
 
       {editProps.canManage && !editProps.editing && (
         <button onClick={editProps.onStartEditing} className="mt-2 rounded-md border border-slate-300 bg-white px-2 py-1 text-xs font-medium text-slate-600 hover:bg-slate-50">
-          {first.description ? 'Edit description' : 'Add description'}
+          Rename / edit
         </button>
       )}
 

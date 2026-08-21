@@ -55,17 +55,26 @@ documentsRouter.post(
     // exactly as it always has.
     const locationGroupId = files.length > 1 ? uuid() : null;
 
-    const ids = await withTransaction(async (client) => {
-      const docIds: string[] = [];
-      for (const file of files) {
+    // Object storage is the slow, network-bound part of this request — for a multi-file batch,
+    // uploading them one at a time (the previous approach) meant the total wait was the *sum* of
+    // every file's upload time, which on a phone's cellular connection could run long enough to
+    // hit the client's timeout and look "stuck". Uploading them concurrently instead means the
+    // wait is roughly the *slowest single file*, not the sum.
+    const uploaded = await Promise.all(
+      files.map(async (file) => {
         const checksum = crypto.createHash('sha256').update(file.buffer).digest('hex');
-        let key: string;
         try {
-          key = await uploadBuffer('documents', file.buffer, file.mimetype);
+          const key = await uploadBuffer('documents', file.buffer, file.mimetype);
+          return { file, checksum, key };
         } catch (err) {
           throw new ApiError(502, 'upload_failed', { message: err instanceof Error ? err.message : String(err) });
         }
+      }),
+    );
 
+    const ids = await withTransaction(async (client) => {
+      const docIds: string[] = [];
+      for (const { file, checksum, key } of uploaded) {
         const { rows } = await client.query(
           `INSERT INTO documents (title, doc_type, category, description, job_id, is_map, uploaded_by, location_group_id)
            VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id`,
