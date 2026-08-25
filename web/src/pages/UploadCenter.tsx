@@ -1,4 +1,4 @@
-import { ChangeEvent, FormEvent, useState } from 'react';
+import { ChangeEvent, FormEvent, useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api/client';
 import { useAuth } from '../context/AuthContext';
@@ -85,7 +85,10 @@ export function UploadCenter() {
   const [category, setCategory] = useState<(typeof CATEGORIES)[number]>('Production');
   const [description, setDescription] = useState('');
   const [files, setFiles] = useState<File[]>([]);
-  const [viewingImage, setViewingImage] = useState<{ doc: Document; url: string } | null>(null);
+  // Metadata is set synchronously on click (so the viewer opens instantly, before the signed URL
+  // has even been requested) — the URL itself comes from a react-query keyed on the doc, which
+  // caches it and lets neighbors be prefetched (see the effect below) for near-instant swiping.
+  const [viewingDoc, setViewingDoc] = useState<Document | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState('');
   const [editDescription, setEditDescription] = useState('');
@@ -117,6 +120,38 @@ export function UploadCenter() {
       return doc.job_id === jobFilter;
     });
 
+  // The swipeable gallery is exactly the images currently on screen, in the same order — flat even
+  // though the cards above cluster some of them into "same location" groups, since groupDocuments
+  // only reshapes how they're rendered, not the underlying (already title-sorted) array.
+  const imageGallery = visibleDocuments.filter((d) => IMAGE_EXTENSIONS.has(d.doc_type.toLowerCase()));
+  const viewingIndex = viewingDoc ? imageGallery.findIndex((d) => d.id === viewingDoc.id) : -1;
+  const nextDoc = viewingIndex >= 0 ? imageGallery[viewingIndex + 1] : undefined;
+  const prevDoc = viewingIndex >= 1 ? imageGallery[viewingIndex - 1] : undefined;
+
+  function downloadUrlQueryKey(doc: Document) {
+    return ['documents', doc.id, 'download', doc.current_version];
+  }
+
+  const { data: viewingUrl } = useQuery({
+    queryKey: viewingDoc ? downloadUrlQueryKey(viewingDoc) : ['documents', 'none'],
+    queryFn: async () => (await api.get(`/documents/${viewingDoc!.id}/download`)).data.url as string,
+    enabled: !!viewingDoc,
+  });
+
+  // Warms the cache for whichever image a swipe/arrow-key would land on next, so the common case —
+  // moving one step at a time through the gallery — feels instant instead of waiting on a fresh
+  // signed-URL round trip (and the image itself re-downloading) on every step.
+  useEffect(() => {
+    for (const doc of [nextDoc, prevDoc]) {
+      if (!doc) continue;
+      queryClient.prefetchQuery({
+        queryKey: downloadUrlQueryKey(doc),
+        queryFn: async () => (await api.get(`/documents/${doc.id}/download`)).data.url as string,
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nextDoc?.id, prevDoc?.id]);
+
   const uploadMutation = useMutation({
     mutationFn: async () => {
       if (!files.length) throw new Error('file required');
@@ -141,13 +176,17 @@ export function UploadCenter() {
     },
   });
 
-  const openMutation = useMutation({
-    mutationFn: async (doc: Document) => ({ doc, url: (await api.get(`/documents/${doc.id}/download`)).data.url as string }),
-    onSuccess: ({ doc, url }) => {
-      if (IMAGE_EXTENSIONS.has(doc.doc_type.toLowerCase())) setViewingImage({ doc, url });
-      else window.open(url, '_blank', 'noopener,noreferrer');
-    },
+  // Non-image files (PDFs, etc.) still need a resolved URL before a new tab can even be opened —
+  // there's no gallery to make "instant" for those, so this one-off round trip is unavoidable.
+  const openFileMutation = useMutation({
+    mutationFn: async (doc: Document) => (await api.get(`/documents/${doc.id}/download`)).data.url as string,
+    onSuccess: (url) => window.open(url, '_blank', 'noopener,noreferrer'),
   });
+
+  function openDoc(doc: Document) {
+    if (IMAGE_EXTENSIONS.has(doc.doc_type.toLowerCase())) setViewingDoc(doc);
+    else openFileMutation.mutate(doc);
+  }
 
   const deleteMutation = useMutation({
     mutationFn: (documentId: string) => api.delete(`/documents/${documentId}`),
@@ -404,7 +443,7 @@ export function UploadCenter() {
               onCancelEditing={() => setEditingId(null)}
               onSave={() => updateMetadataMutation.mutate({ ids: entry.map((d) => d.id), title: editTitle, description: editDescription })}
               saving={updateMetadataMutation.isPending}
-              onOpen={(doc) => openMutation.mutate(doc)}
+              onOpen={openDoc}
               onDelete={onDelete}
               deletingId={deleteMutation.isPending ? (deleteMutation.variables as string) : null}
               selected={entry.every((d) => selectedIds.has(d.id))}
@@ -426,7 +465,7 @@ export function UploadCenter() {
               onCancelEditing={() => setEditingId(null)}
               onSave={() => updateMetadataMutation.mutate({ ids: [entry.id], title: editTitle, description: editDescription })}
               saving={updateMetadataMutation.isPending}
-              onOpen={() => openMutation.mutate(entry)}
+              onOpen={() => openDoc(entry)}
               onDelete={() => onDelete(entry)}
               deleting={deleteMutation.isPending && deleteMutation.variables === entry.id}
               selected={selectedIds.has(entry.id)}
@@ -443,15 +482,18 @@ export function UploadCenter() {
         )}
       </div>
 
-      {viewingImage && user && (
+      {viewingDoc && user && (
         <ImageAnnotationViewer
-          documentId={viewingImage.doc.id}
-          documentVersion={viewingImage.doc.current_version}
-          title={viewingImage.doc.title}
-          description={viewingImage.doc.description}
-          imageUrl={viewingImage.url}
+          documentId={viewingDoc.id}
+          documentVersion={viewingDoc.current_version}
+          title={viewingDoc.title}
+          description={viewingDoc.description}
+          imageUrl={viewingUrl ?? null}
           currentUserId={user.id}
-          onClose={() => setViewingImage(null)}
+          onClose={() => setViewingDoc(null)}
+          onNext={nextDoc ? () => setViewingDoc(nextDoc) : undefined}
+          onPrev={prevDoc ? () => setViewingDoc(prevDoc) : undefined}
+          position={viewingIndex >= 0 ? { index: viewingIndex, total: imageGallery.length } : undefined}
         />
       )}
     </div>

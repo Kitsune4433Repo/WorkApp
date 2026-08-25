@@ -65,8 +65,20 @@ export async function uploadBuffer(prefix: string, buffer: Buffer, contentType: 
   return key;
 }
 
-export async function getSignedDownloadUrl(key: string, expiresInSeconds = 3600): Promise<string> {
-  return getSignedUrl(signingClient, new GetObjectCommand({ Bucket: BUCKET, Key: key }), { expiresIn: expiresInSeconds });
+// filename, when given, is what the browser saves the file as (e.g. on a right-click "Save As" or
+// Android's download-to-storage) — object keys are bare random ids with no extension, so without
+// this every saved file lands as an unrecognizable, extension-less name instead of the document's
+// title. 'inline' (not 'attachment') keeps images/PDFs opening in-place, matching current behavior.
+export async function getSignedDownloadUrl(key: string, expiresInSeconds = 3600, filename?: string): Promise<string> {
+  return getSignedUrl(
+    signingClient,
+    new GetObjectCommand({
+      Bucket: BUCKET,
+      Key: key,
+      ...(filename ? { ResponseContentDisposition: `inline; filename="${filename.replace(/"/g, "'")}"` } : {}),
+    }),
+    { expiresIn: expiresInSeconds },
+  );
 }
 
 // For server-side zipping (bulk "download selected/all resources") — unlike getSignedDownloadUrl,

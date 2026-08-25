@@ -285,13 +285,15 @@ documentsRouter.get(
   asyncHandler(async (req, res) => {
     const version = req.query.version ? Number(req.query.version) : undefined;
     const { rows } = await pool.query(
-      `SELECT dv.file_url FROM document_versions dv
+      `SELECT dv.file_url, d.title, d.doc_type FROM document_versions dv
          JOIN documents d ON d.id = dv.document_id
         WHERE dv.document_id = $1 AND dv.version_number = COALESCE($2, d.current_version)`,
       [req.params.documentId, version ?? null],
     );
     if (!rows.length) throw new ApiError(404, 'document_version_not_found');
-    res.json({ url: await getSignedDownloadUrl(rows[0].file_url) });
+    const { file_url, title, doc_type } = rows[0];
+    const filename = `${title.replace(/[/\\]/g, '-')}${doc_type ? `.${doc_type}` : ''}`;
+    res.json({ url: await getSignedDownloadUrl(file_url, 3600, filename) });
   }),
 );
 

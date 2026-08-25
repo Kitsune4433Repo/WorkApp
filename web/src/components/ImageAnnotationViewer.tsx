@@ -45,20 +45,43 @@ interface Props {
   documentVersion: number;
   title: string;
   description?: string | null;
-  imageUrl: string;
+  // null while the signed URL is still loading — the viewer opens immediately on click rather than
+  // waiting on that round trip first, so this covers the brief gap (or longer, on a slow
+  // connection) between "the user tapped an image" and "we actually have something to show".
+  imageUrl: string | null;
   currentUserId: string;
   onClose: () => void;
+  onNext?: () => void;
+  onPrev?: () => void;
+  position?: { index: number; total: number };
 }
+
+// A drag has to clear both of these to count as "swipe to the next/previous image" rather than
+// "the user nudged the pan a little" — distance is the primary signal, but a slow, long drag (e.g.
+// someone carefully panning around a zoomed photo) is deliberately excluded by the velocity check.
+const SWIPE_MIN_DISTANCE_PX = 80;
+const SWIPE_MAX_DURATION_MS = 600;
 
 /** Freehand draw/highlight overlay on an uploaded image — reuses the map_annotations backend built
  * for the Android map-redlining feature (PUT/GET /documents/:id/annotations); each user has their
  * own annotation layer on the same image, with the same offline-conflict versioning as that feature. */
-export function ImageAnnotationViewer({ documentId, documentVersion, title, description, imageUrl, currentUserId, onClose }: Props) {
+export function ImageAnnotationViewer({
+  documentId,
+  documentVersion,
+  title,
+  description,
+  imageUrl,
+  currentUserId,
+  onClose,
+  onNext,
+  onPrev,
+  position,
+}: Props) {
   const queryClient = useQueryClient();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
   const drawingRef = useRef(false);
-  const panRef = useRef<{ x: number; y: number; panX: number; panY: number } | null>(null);
+  const panRef = useRef<{ x: number; y: number; panX: number; panY: number; startedAt: number } | null>(null);
 
   const [tool, setToolState] = useState<Tool>('pen');
   const [size, setSize] = useState(DEFAULT_SIZE.pen);
@@ -74,6 +97,20 @@ export function ImageAnnotationViewer({ documentId, documentVersion, title, desc
     setToolState(t);
     setSize(DEFAULT_SIZE[t]);
   }
+
+  // Resets only the per-image state (this document's strokes/version, its own load/error status,
+  // and the view) — NOT tool/color/size, which are drawing preferences that should carry over as
+  // you move through the gallery. This runs instead of remounting the whole component on document
+  // change, since a remount was resetting the active tool back to "Draw" every time, which broke
+  // swipe-to-navigate (swiping only works in "Pan" mode — see onPointerUp below) after one use.
+  useEffect(() => {
+    setStrokes([]);
+    setServerVersion(0);
+    setLoaded(false);
+    setImageError(false);
+    setZoom(1);
+    setPan({ x: 0, y: 0 });
+  }, [documentId]);
 
   const { data: layers } = useQuery<AnnotationLayer[]>({
     queryKey: ['documents', documentId, 'annotations'],
@@ -148,6 +185,21 @@ export function ImageAnnotationViewer({ documentId, documentVersion, title, desc
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Desktop shortcut for the same navigation the arrow buttons/swipe give touch users — skipped
+  // while a color/range input has focus so arrow-key nudges there (e.g. the size slider) aren't
+  // hijacked into changing images.
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      const activeTag = (document.activeElement as HTMLElement | null)?.tagName;
+      if (activeTag === 'INPUT') return;
+      if (e.key === 'ArrowRight' && onNext) onNext();
+      else if (e.key === 'ArrowLeft' && onPrev) onPrev();
+      else if (e.key === 'Escape') onClose();
+    }
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [onNext, onPrev, onClose]);
+
   function pointFromEvent(e: React.PointerEvent<HTMLCanvasElement>): Point {
     const rect = e.currentTarget.getBoundingClientRect();
     return { x: (e.clientX - rect.left) / rect.width, y: (e.clientY - rect.top) / rect.height };
@@ -156,7 +208,7 @@ export function ImageAnnotationViewer({ documentId, documentVersion, title, desc
   function onPointerDown(e: React.PointerEvent<HTMLCanvasElement>) {
     e.currentTarget.setPointerCapture(e.pointerId);
     if (tool === 'pan') {
-      panRef.current = { x: e.clientX, y: e.clientY, panX: pan.x, panY: pan.y };
+      panRef.current = { x: e.clientX, y: e.clientY, panX: pan.x, panY: pan.y, startedAt: Date.now() };
       return;
     }
     drawingRef.current = true;
@@ -184,8 +236,22 @@ export function ImageAnnotationViewer({ documentId, documentVersion, title, desc
     });
   }
 
-  function onPointerUp() {
+  function onPointerUp(e: React.PointerEvent<HTMLCanvasElement>) {
     drawingRef.current = false;
+    // At the default 1x "fit" zoom, dragging in pan mode doesn't reveal anything a pan couldn't
+    // already show (the whole image is already on screen) — so repurpose a fast, mostly-horizontal
+    // drag there as swipe-to-navigate instead. Once actually zoomed in, panning is doing real work
+    // (looking around a magnified image), so it's left alone — swipe-nav only ever fires at 1x.
+    if (panRef.current && zoom === MIN_ZOOM && (onNext || onPrev)) {
+      const dx = e.clientX - panRef.current.x;
+      const dy = e.clientY - panRef.current.y;
+      const duration = Date.now() - panRef.current.startedAt;
+      if (Math.abs(dx) >= SWIPE_MIN_DISTANCE_PX && Math.abs(dx) > Math.abs(dy) * 1.5 && duration <= SWIPE_MAX_DURATION_MS) {
+        setPan({ x: 0, y: 0 });
+        if (dx < 0) onNext?.();
+        else onPrev?.();
+      }
+    }
     panRef.current = null;
   }
 
@@ -203,7 +269,10 @@ export function ImageAnnotationViewer({ documentId, documentVersion, title, desc
     <div className="fixed inset-0 z-50 flex flex-col bg-black/80 p-2 md:p-4">
       <div className="rounded-t-lg bg-white px-3 py-3 md:px-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="font-semibold text-slate-900">{title}</div>
+          <div className="font-semibold text-slate-900">
+            {title}
+            {position && <span className="ml-2 font-normal text-slate-400">{position.index + 1} / {position.total}</span>}
+          </div>
           <div className="flex flex-wrap items-center gap-2">
             <button onClick={() => selectTool('pen')} className={toolButtonClass(tool === 'pen')}>
               Draw
@@ -272,6 +341,24 @@ export function ImageAnnotationViewer({ documentId, documentVersion, title, desc
         </p>
       )}
       <div className="relative flex flex-1 items-center justify-center overflow-hidden bg-slate-900">
+        {onPrev && (
+          <button
+            onClick={onPrev}
+            aria-label="Previous image"
+            className="absolute left-1 top-1/2 z-10 -translate-y-1/2 rounded-full bg-black/40 p-3 text-2xl text-white hover:bg-black/60 md:left-3"
+          >
+            ‹
+          </button>
+        )}
+        {onNext && (
+          <button
+            onClick={onNext}
+            aria-label="Next image"
+            className="absolute right-1 top-1/2 z-10 -translate-y-1/2 rounded-full bg-black/40 p-3 text-2xl text-white hover:bg-black/60 md:right-3"
+          >
+            ›
+          </button>
+        )}
         <div
           className="relative inline-block min-h-[60vh] min-w-[60vw]"
           style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`, transformOrigin: 'center center' }}
@@ -279,6 +366,10 @@ export function ImageAnnotationViewer({ documentId, documentVersion, title, desc
           <div ref={wrapperRef} className="relative inline-block">
             {imageError ? (
               <div className="flex h-[60vh] w-[60vw] items-center justify-center text-sm text-slate-400">Image failed to load.</div>
+            ) : imageUrl === null ? (
+              <div className="flex h-[60vh] w-[60vw] items-center justify-center">
+                <div className="h-10 w-10 animate-spin rounded-full border-4 border-slate-600 border-t-white" aria-label="Loading image" />
+              </div>
             ) : (
               <img src={imageUrl} alt={title} onLoad={redraw} onError={() => setImageError(true)} className="max-h-[80vh] max-w-full select-none" draggable={false} />
             )}
