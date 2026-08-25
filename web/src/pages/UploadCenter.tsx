@@ -38,6 +38,21 @@ function uploadErrorMessage(error: unknown): string {
   return 'Failed to upload.';
 }
 
+// The zip is assembled on the backend and comes back as a blob — this is what actually saves it
+// to disk client-side. Using a client-picked `download` name (rather than relying on the fixed
+// Content-Disposition the backend sends) lets "download all" and "download selected" each get a
+// filename that reflects what's actually in the zip.
+function triggerBlobDownload(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
 // Numeric-aware ("#2" before "#10") so the list holds a stable position — sorting by recency
 // (the old behavior) meant renaming, re-describing, or assigning any single resource to a job
 // bumped it to the top and reshuffled the whole library on every edit.
@@ -156,6 +171,21 @@ export function UploadCenter() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['documents'] }),
   });
 
+  // Available to every role — downloading is a read action, same as the existing per-file "Open".
+  // Bounded generously (unlike the upload timeout) since the backend is streaming a zip of
+  // potentially many, possibly large files, not a single request/response round trip.
+  const downloadMutation = useMutation({
+    mutationFn: async (params: { ids: string[]; filename: string }) => {
+      const response = await api.post(
+        '/documents/zip',
+        { documentIds: params.ids },
+        { responseType: 'blob', timeout: 5 * 60_000 },
+      );
+      return { blob: response.data as Blob, filename: params.filename };
+    },
+    onSuccess: ({ blob, filename }) => triggerBlobDownload(blob, filename),
+  });
+
   function onSubmit(e: FormEvent) {
     e.preventDefault();
     uploadMutation.mutate();
@@ -209,6 +239,18 @@ export function UploadCenter() {
         },
       },
     );
+  }
+
+  function downloadSelected() {
+    downloadMutation.mutate({ ids: [...selectedIds], filename: `resources-${selectedIds.size}-selected.zip` });
+  }
+
+  // Downloads whatever is currently visible — respecting the job filter, so "download all" scoped
+  // to one job just downloads that job's resources instead of everything in the library.
+  function downloadVisible() {
+    const filename =
+      jobFilter === 'all' ? 'resources-all.zip' : jobFilter === 'unassigned' ? 'resources-unassigned.zip' : `resources-${jobsById.get(jobFilter)?.job_number ?? jobFilter}.zip`;
+    downloadMutation.mutate({ ids: visibleDocuments.map((d) => d.id), filename });
   }
 
   const canManage = !!user && MANAGE_ROLES.includes(user.role);
@@ -272,7 +314,7 @@ export function UploadCenter() {
         )}
       </form>
 
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <label htmlFor="job-filter" className="text-sm font-medium text-slate-600">
           Filter by job
         </label>
@@ -290,31 +332,52 @@ export function UploadCenter() {
             </option>
           ))}
         </select>
+        <button
+          type="button"
+          disabled={!visibleDocuments.length || downloadMutation.isPending}
+          onClick={downloadVisible}
+          className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+        >
+          {downloadMutation.isPending ? 'Zipping…' : `Download ${jobFilter === 'all' ? 'all' : 'these'} (${visibleDocuments.length})`}
+        </button>
+        {downloadMutation.isError && <span className="text-xs text-red-600">Download failed — try again.</span>}
       </div>
 
-      {canManage && selectedIds.size > 0 && (
+      {selectedIds.size > 0 && (
         <div className="flex flex-wrap items-center gap-2 rounded-lg border border-brand-300 bg-brand-50 px-4 py-2.5 text-sm">
           <span className="font-medium text-brand-800">{selectedIds.size} selected</span>
-          <select
-            value={assignJobSelect}
-            onChange={(e) => setAssignJobSelect(e.target.value)}
-            className="rounded-md border border-slate-300 px-2 py-1.5 text-sm"
-          >
-            <option value="">Assign to job…</option>
-            {jobs?.map((j) => (
-              <option key={j.id} value={j.id}>
-                {j.job_number} — {j.title}
-              </option>
-            ))}
-          </select>
           <button
             type="button"
-            disabled={!assignJobSelect || assignJobMutation.isPending}
-            onClick={assignSelectedToJob}
-            className="rounded-md bg-brand-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-brand-700 disabled:opacity-50"
+            disabled={downloadMutation.isPending}
+            onClick={downloadSelected}
+            className="rounded-md border border-brand-300 bg-white px-3 py-1.5 text-xs font-medium text-brand-700 hover:bg-brand-50 disabled:opacity-50"
           >
-            Assign
+            {downloadMutation.isPending ? 'Zipping…' : 'Download selected'}
           </button>
+          {canManage && (
+            <>
+              <select
+                value={assignJobSelect}
+                onChange={(e) => setAssignJobSelect(e.target.value)}
+                className="rounded-md border border-slate-300 px-2 py-1.5 text-sm"
+              >
+                <option value="">Assign to job…</option>
+                {jobs?.map((j) => (
+                  <option key={j.id} value={j.id}>
+                    {j.job_number} — {j.title}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                disabled={!assignJobSelect || assignJobMutation.isPending}
+                onClick={assignSelectedToJob}
+                className="rounded-md bg-brand-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-brand-700 disabled:opacity-50"
+              >
+                Assign
+              </button>
+            </>
+          )}
           <button
             type="button"
             onClick={() => setSelectedIds(new Set())}
@@ -492,15 +555,13 @@ function DocumentCard({
         </div>
       ) : (
         <div className="flex items-start gap-2">
-          {editProps.canManage && (
-            <input
-              type="checkbox"
-              checked={selected}
-              onChange={onToggleSelect}
-              aria-label={`Select ${doc.title}`}
-              className="mt-1 h-4 w-4 shrink-0 rounded border-slate-300"
-            />
-          )}
+          <input
+            type="checkbox"
+            checked={selected}
+            onChange={onToggleSelect}
+            aria-label={`Select ${doc.title}`}
+            className="mt-1 h-4 w-4 shrink-0 rounded border-slate-300"
+          />
           <button onClick={onOpen} className="w-full text-left">
             <div className="font-medium text-slate-900">{doc.title}</div>
             <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-500">
@@ -563,15 +624,13 @@ function GroupedDocumentCard({
         Same location · {docs.length} files
       </div>
       <div className="flex items-start gap-2">
-        {editProps.canManage && (
-          <input
-            type="checkbox"
-            checked={selected}
-            onChange={onToggleSelect}
-            aria-label={`Select ${first.title} group`}
-            className="mt-1 h-4 w-4 shrink-0 rounded border-slate-300"
-          />
-        )}
+        <input
+          type="checkbox"
+          checked={selected}
+          onChange={onToggleSelect}
+          aria-label={`Select ${first.title} group`}
+          className="mt-1 h-4 w-4 shrink-0 rounded border-slate-300"
+        />
         <div>
           {!editProps.editing && <div className="font-medium text-slate-900">{first.title}</div>}
           {first.category && <span className="mt-1 inline-block rounded-full bg-brand-100 px-2 py-0.5 text-xs text-brand-700">{first.category}</span>}

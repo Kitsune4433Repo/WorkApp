@@ -1,12 +1,13 @@
 import { Router } from 'express';
 import multer from 'multer';
 import crypto from 'crypto';
+import archiver from 'archiver';
 import { v4 as uuid } from 'uuid';
 import { z } from 'zod';
 import { pool, withTransaction } from '../config/database';
 import { requireAuth, requireRole } from '../middleware/auth';
 import { asyncHandler, ApiError } from '../middleware/errorHandler';
-import { uploadBuffer, getSignedDownloadUrl, deleteObject } from '../services/objectStorageService';
+import { uploadBuffer, getSignedDownloadUrl, getObjectStream, deleteObject } from '../services/objectStorageService';
 import { recordConflict } from '../services/conflictResolutionService';
 
 export const documentsRouter = Router();
@@ -212,6 +213,70 @@ documentsRouter.get(
       params,
     );
     res.json(rows);
+  }),
+);
+
+const zipRequestSchema = z.object({ documentIds: z.array(z.string().uuid()).min(1).max(500) });
+
+interface ZipCandidate {
+  title: string;
+  doc_type: string | null;
+}
+
+// Same title can legitimately repeat (e.g. every file in a "same location" group) — number the
+// repeats so the zip doesn't silently drop entries to a name collision. Exported as a pure function
+// (no I/O) so this naming logic is unit-testable without needing real object storage.
+export function buildZipEntryNames(docs: ZipCandidate[]): string[] {
+  const usedNames = new Map<string, number>();
+  return docs.map((doc) => {
+    const ext = doc.doc_type ? `.${doc.doc_type}` : '';
+    const base = doc.title.replace(/[/\\]/g, '-');
+    const count = usedNames.get(base) ?? 0;
+    usedNames.set(base, count + 1);
+    return count > 0 ? `${base} (${count})${ext}` : `${base}${ext}`;
+  });
+}
+
+// Bulk "download selected/all resources" — the frontend already knows which document ids are
+// visible/selected (it applies the job filter and multi-select client-side), so this just takes
+// that list rather than re-deriving it server-side.
+documentsRouter.post(
+  '/zip',
+  asyncHandler(async (req, res) => {
+    const { documentIds } = zipRequestSchema.parse(req.body);
+    const { rows } = await pool.query(
+      `SELECT d.id, d.title, d.doc_type, dv.file_url
+         FROM documents d
+         JOIN document_versions dv ON dv.document_id = d.id AND dv.version_number = d.current_version
+        WHERE d.id = ANY($1::uuid[])`,
+      [documentIds],
+    );
+    if (!rows.length) throw new ApiError(404, 'no_documents_found');
+
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Disposition', 'attachment; filename="resources.zip"');
+
+    const archive = archiver('zip', { zlib: { level: 9 } });
+    // Headers are already sent by the time these can fire, so there's no response left to error
+    // out with — just log and end the stream instead of letting asyncHandler try to send one.
+    archive.on('warning', (err) => console.warn('[documents/zip] archiver warning:', err));
+    archive.on('error', (err) => {
+      console.error('[documents/zip] archiver error:', err);
+      res.end();
+    });
+    archive.pipe(res);
+
+    const names = buildZipEntryNames(rows);
+    for (const [i, doc] of rows.entries()) {
+      try {
+        const stream = await getObjectStream(doc.file_url);
+        archive.append(stream, { name: names[i] });
+      } catch (err) {
+        // Don't let one unreachable/missing file sink the whole zip — the rest still download.
+        console.warn(`[documents/zip] skipping document ${doc.id}, failed to fetch object:`, err instanceof Error ? err.message : err);
+      }
+    }
+    await archive.finalize();
   }),
 );
 

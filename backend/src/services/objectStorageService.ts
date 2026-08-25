@@ -2,6 +2,7 @@ import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand } fro
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { NodeHttpHandler } from '@smithy/node-http-handler';
 import { randomUUID } from 'crypto';
+import type { Readable } from 'stream';
 
 const credentials = {
   accessKeyId: process.env.OBJECT_STORE_ACCESS_KEY ?? '',
@@ -66,6 +67,13 @@ export async function uploadBuffer(prefix: string, buffer: Buffer, contentType: 
 
 export async function getSignedDownloadUrl(key: string, expiresInSeconds = 3600): Promise<string> {
   return getSignedUrl(signingClient, new GetObjectCommand({ Bucket: BUCKET, Key: key }), { expiresIn: expiresInSeconds });
+}
+
+// For server-side zipping (bulk "download selected/all resources") — unlike getSignedDownloadUrl,
+// this fetches the bytes directly since a zip archive is assembled on the backend, not the browser.
+export async function getObjectStream(key: string): Promise<Readable> {
+  const { Body } = await s3.send(new GetObjectCommand({ Bucket: BUCKET, Key: key }));
+  return Body as Readable;
 }
 
 // Best-effort: an orphaned object left behind in the bucket is harmless, whereas failing the whole
